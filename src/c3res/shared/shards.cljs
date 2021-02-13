@@ -14,18 +14,20 @@
     (.then (.-ready sodium) #(close! done))
       done))
 
-(defn create-shard [plaintext author-priv-key author-pub-key]
-  ; TODO: shards should be csexpr encoded, and include at least:
-  ;   - creation timestamp
-  ;   - initial tags (used for identifying the purpose / origin of this shard in case of loss of metadata / services)
-  ;   - type of content (either as separate field or as csexpr type hint)
-  ;   - plaintext data given to this function
+(defn csexp-to-map [csexp]
+  ; by convention c3res is using key-value pairs in the root level s-expressions,
+  ; so lets make life easier by converting them to clj maps with keywords
+  (apply hash-map (map-indexed #(if (even? %1) (keyword %2) %2) csexp)))
+
+(defn create-shard [plaintext tags contenttype author-priv-key author-pub-key]
   (let [stream-key (.crypto_secretbox_keygen sodium (.-crypto_secretbox_KEYBYTES sodium))
         nonce (.randombytes_buf sodium (.-crypto_secretbox_NONCEBYTES sodium))
-        box (.crypto_secretbox_easy sodium plaintext nonce stream-key)
+        contents (seq ["timestamp" (str (.now js/Date)) "tags" (seq tags) "type" contenttype "raw" plaintext])
+        box (.crypto_secretbox_easy sodium (csexp/encode contents) nonce stream-key)
         author-cap (.crypto_box_seal sodium stream-key author-pub-key)
-        shard (.concat author-cap (.concat nonce box))
-        shard-id (.crypto_generichash sodium (.crypto_generichash_BYTES sodium) shard)]
-    {:shard-id shard-id :shard shard}
-    ))
+        shard (csexp/encode (seq ["authorcap" author-cap "nonce" nonce "data" box]))
+        shard-id (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard)]
+    {:shard-id shard-id :shard shard}))
 
+; currently just for my own shards: todo, add support for read caps
+(defn read-shard [shard my-priv-key])
