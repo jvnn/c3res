@@ -30,5 +30,10 @@
   (is (= (buf-to-str (csexp/encode '("foo" "bar" "z"))) "(3:foo3:bar1:z)")))
 
 (deftest test-nested-exprs
-  (is (= (buf-to-str (csexp/encode '("this" ("is" ("nested!!!!!"))))) "(4:this(2:is(11:nested!!!!!)))"))
-  )
+  (is (= (buf-to-str (csexp/encode '("this" ("is" ("nested!!!!!"))))) "(4:this(2:is(11:nested!!!!!)))")))
+
+(deftest test-buf
+  (is (= (buf-to-str (csexp/encode (seq ["buffer:" (js/Uint8Array. (clj->js [35 33 33]))]))) "(7:buffer:3:#!!)")))
+
+(deftest test-empty
+  (is (= (buf-to-str (csexp/encode '())) "()")))

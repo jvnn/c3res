@@ -44,7 +44,8 @@
              (cond
               (string? current) (conj (add-length (count current) elements) {:type :string :value current})
               (instance? js/Uint8Array current) (conj (add-length (.-length current) elements) {:type :buffer :value current})
-              (seq? current) (encode-internal current (conj elements {:type :string :value "("}))))
+              (seq? current) (encode-internal current (conj elements {:type :string :value "("}))
+              :else elements))
       (conj elements {:type :string :value ")"})))) 
 
 (defn encode [sexp]
