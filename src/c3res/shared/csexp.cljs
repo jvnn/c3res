@@ -53,26 +53,25 @@
 
 ; TODO: support buffers, use TextDecoder for the strings
 (defn- decode-single [remaining data]
-  (let [[fullmatch group] (re-find #"^(\d+):" (s/join remaining)) ; XXX This string conversion will probably kill performance
-        start (nthnext remaining (count fullmatch))
-        datalen (js/parseInt group)]
-    [(nthnext start datalen) (conj data (s/join (take datalen start)))]))
+  (when (and (string? (first remaining)) (re-matches #"\d" (first remaining)))
+    (let [[fullmatch group] (re-find #"^(\d+):" (s/join remaining)) ; XXX This string conversion will probably kill performance
+          start (nthnext remaining (count fullmatch))
+          datalen (js/parseInt group)]
+      [(nthnext start datalen) (conj data (s/join (take datalen start)))])))
 
-(defn- decode-internal [csexp existing-data]
-  (loop [state :start remaining csexp data existing-data]
-    (let [current (first remaining)]
-      (if (nil? current)
-        data
-        (case state
-          :start (when (= current "(") (recur :len (rest remaining) data))
-          :len (let [[newremaining newdata] (decode-single remaining data)] (recur :next newremaining newdata))
-          :next (cond
-                  (= current "(")
-                  (let [[newremaining newdata] (decode-internal remaining data)] (recur :next newremaining newdata))
-                  (= current ")")
-                  [(rest remaining) data]
-                  :else ; in well-formed csexp this has to be a length string
-                  (recur :len remaining data)))))))
+(defn- decode-internal [csexp]
+  (loop [state :start remaining csexp data []]
+    (when-let [current (first remaining)]
+      (case state
+        :start (when (= current "(") (recur :len (rest remaining) data))
+        :len (let [[newremaining newdata] (decode-single remaining data)] (recur :next newremaining newdata))
+        :next (cond
+                (= current "(")
+                (let [[newremaining newdata] (decode-internal remaining)] (recur :next newremaining (conj data (seq newdata))))
+                (= current ")")
+                [(rest remaining) data]
+                :else ; in well-formed csexp this has to be a length string
+                (recur :len remaining data))))))
 
 
 ; some assumptions we need to make here:
@@ -82,5 +81,5 @@
 ;     that should be refactored once the data format seems meaningful and stable enough
 ;   - the above also means that we can interpret everything non-buffer as a string
 (defn decode [csexp]
-  (seq (second (decode-internal csexp []))))
+  (seq (second (decode-internal csexp))))
 

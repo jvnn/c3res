@@ -24,7 +24,7 @@
   (is (= (buf-to-str (csexp/encode '("foo" "bar" "z"))) "(3:foo3:bar1:z)")))
 
 (deftest test-nested-exprs
-  (is (= (buf-to-str (csexp/encode '("this" ("is" ("nested!!!!!"))))) "(4:this(2:is(11:nested!!!!!)))")))
+  (is (= (buf-to-str (csexp/encode '("this" ("is" ("nested!!!!!")) "yo"))) "(4:this(2:is(11:nested!!!!!))2:yo)")))
 
 (deftest test-buf
   (is (= (buf-to-str (csexp/encode (seq ["buffer:" (js/Uint8Array. (clj->js [35 33 33]))]))) "(7:buffer:3:#!!)")))
@@ -33,5 +33,17 @@
   (is (= (buf-to-str (csexp/encode '())) "()")))
 
 (deftest test-simple-decode
-  (is (= (csexp/decode "(3:foo2:ah)") '("foo" "ah")))
+  (is (= (csexp/decode "(3:foo2:ah)") '("foo" "ah"))))
+
+(deftest test-nested-decode
+  (is (= (csexp/decode "(1:a(2:bb(3:ccc)4:dddd))") '("a" ("bb" ("ccc") "dddd")))))
+
+(deftest test-parens-in-strings
+  (is (= (buf-to-str (csexp/encode '("foo(" ")bar"))) "(4:foo(4:)bar)"))
+  (is (= (csexp/decode "(3:ab(2:rr(1:)))") '("ab(" "rr" (")")))))
+
+(deftest tests-decode-invalid
+  (is (nil? (csexp/decode "2:ab")))
+  (is (nil? (csexp/decode "(foo)")))
+  (is (nil? (csexp/decode "(2:ab(1:a)")))
   )
