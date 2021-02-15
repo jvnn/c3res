@@ -51,13 +51,21 @@
 (defn encode [sexp]
   (serialize (encode-internal sexp [{:type :string :value "("}])))
 
+
+(defn- get-int [string]
+  (let [parsed (js/parseFloat string)]
+    (if (integer? parsed) parsed nil)))
+
 ; TODO: support buffers, use TextDecoder for the strings
 (defn- decode-single [remaining data]
-  (when (and (string? (first remaining)) (re-matches #"\d" (first remaining)))
-    (let [[fullmatch group] (re-find #"^(\d+):" (s/join remaining)) ; XXX This string conversion will probably kill performance
-          start (nthnext remaining (count fullmatch))
-          datalen (js/parseInt group)]
-      [(nthnext start datalen) (conj data (s/join (take datalen start)))])))
+  (when (get-int (first remaining))
+    (let [len-string (take-while get-int remaining)
+          datalen (get-int (s/join len-string))
+          stringlen (count len-string)
+          nextchar (nth remaining stringlen)
+          start (nthnext remaining (+ stringlen 1))]
+      (when (= nextchar ":")
+        [(nthnext start datalen) (conj data (s/join (take datalen start)))]))))
 
 (defn- decode-internal [csexp]
   (loop [state :start remaining csexp data []]
