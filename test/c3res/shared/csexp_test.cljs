@@ -42,8 +42,14 @@
   (is (= (buf-to-str (csexp/encode '("foo(" ")bar"))) "(4:foo(4:)bar)"))
   (is (= (csexp/decode "(3:ab(2:rr(1:)))") '("ab(" "rr" (")")))))
 
-(deftest tests-decode-invalid
+(deftest test-decode-invalid
   (is (nil? (csexp/decode "2:ab")))
   (is (nil? (csexp/decode "(foo)")))
-  (is (nil? (csexp/decode "(2:ab(1:a)")))
-  )
+  (is (nil? (csexp/decode "(1:foo2:ab)")))
+  (is (nil? (csexp/decode "(2:ab(1:a)"))))
+
+(deftest test-buffer-decode
+  (let [result (csexp/decode (map #(.charCodeAt % 0) (seq "(9:something(6:buffer3:#!!))")))
+        buffer (second (second result))]
+    (is (instance? js/Uint8Array buffer))
+    (is (= (buf-to-str buffer) "#!!"))))

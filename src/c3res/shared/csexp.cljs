@@ -56,20 +56,28 @@
   (let [parsed (js/parseFloat string)]
     (if (integer? parsed) parsed nil)))
 
-; TODO: support buffers, use TextDecoder for the strings
+(defn- as-char [element]
+  (if (number? element)
+    (.fromCharCode js/String element)
+    element))
+
+; TODO: use TextDecoder for the strings
 (defn- decode-single [remaining data]
-  (when (get-int (first remaining))
-    (let [len-string (take-while get-int remaining)
-          datalen (get-int (s/join len-string))
+  (when (get-int (as-char (first remaining)))
+    (let [len-string (take-while #(get-int (as-char %)) remaining)
+          datalen (get-int (s/join (map as-char len-string)))
           stringlen (count len-string)
-          nextchar (nth remaining stringlen)
-          start (nthnext remaining (+ stringlen 1))]
+          nextchar (as-char (nth remaining stringlen))
+          start (nthnext remaining (+ stringlen 1))
+          isbuffer (and (= (count data) 1) (= (first data) "buffer"))]
       (when (= nextchar ":")
-        [(nthnext start datalen) (conj data (s/join (take datalen start)))]))))
+        (if isbuffer
+          [(nthnext start datalen) (conj data (js/Uint8Array. (take datalen start)))]
+          [(nthnext start datalen) (conj data (s/join (map as-char (take datalen start))))])))))
 
 (defn- decode-internal [csexp]
   (loop [state :start remaining csexp data []]
-    (when-let [current (first remaining)]
+    (when-let [current (as-char (first remaining))]
       (case state
         :start (when (= current "(") (recur :len (rest remaining) data))
         :len (let [[newremaining newdata] (decode-single remaining data)] (recur :next newremaining newdata))
