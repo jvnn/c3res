@@ -32,7 +32,7 @@
     (loop [element (first data) remaining (rest data) offset 0]
       (if element
         (recur (first remaining) (rest remaining) (insert-element view element offset))
-        buf))))
+        (js/Uint8Array. buf)))))
 
 (defn- add-length [len elements]
   (conj elements {:type :string :value (str len)} {:type :string :value ":"}))

@@ -26,19 +26,19 @@
 (defn create-shard [plaintext tags contenttype author-keypair]
   (let [stream-key (.crypto_secretbox_keygen sodium)
         nonce (.randombytes_buf sodium (.-crypto_secretbox_NONCEBYTES sodium))
-        contents (seq ["timestamp" (str (.now js/Date)) "tags" (seq tags) "type" contenttype "raw" plaintext])
+        contents (seq ["timestamp" (str (.now js/Date)) "type" contenttype "raw" plaintext "tags" (seq tags)])
         box (.crypto_secretbox_easy sodium (csexp/encode contents) nonce stream-key)
         author-cap (.crypto_box_seal sodium stream-key (:public author-keypair))
-        shard (csexp/encode (seq ["authorcap" author-cap "nonce" nonce "data" box]))
+        shard (csexp/encode (seq ["authorcap" (seq ["buffer" author-cap]) "nonce" (seq ["buffer" nonce]) "data" (seq ["buffer" box])]))
         shard-id (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard)]
     {:shard-id shard-id :shard shard}))
 
 ; currently just for my own shards: todo, add support for read caps
 (defn read-shard [shard my-keypair]
-  (let [shard-map (csexp-to-map shard)
-        cap (:authorcap shard-map)
-        nonce (:nonce shard-map)
-        data (:data shard-map)
+  (let [shard-map (csexp-to-map (csexp/decode shard))
+        cap (second (:authorcap shard-map))
+        nonce (second (:nonce shard-map))
+        data (second (:data shard-map))
         stream-key (.crypto_box_seal_open sodium cap (:public my-keypair) (:private my-keypair))
-        plaintext (.crypto_secretbox_easy_open data nonce stream-key)]
-    (csexp-to-map plaintext)))
+        plaintext (.crypto_secretbox_open_easy sodium data nonce stream-key)]
+    (csexp-to-map (csexp/decode plaintext))))

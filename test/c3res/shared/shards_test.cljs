@@ -10,4 +10,4 @@
    (go
     (<! (shards/init))
     (let [keypair (shards/generate-keys)]
-      (is (= (:raw (shards/read-shard (shards/create-shard "foo" [] "text/plain" keypair) keypair)) "foo")))))
+      (is (= (:raw (shards/read-shard (:shard (shards/create-shard "foo" [] "text/plain" keypair)) keypair)) "foo")))))
