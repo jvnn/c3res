@@ -69,7 +69,7 @@
           stringlen (count len-string)
           nextchar (as-char (nth remaining stringlen))
           start (nthnext remaining (+ stringlen 1))
-          isbuffer (and (= (count data) 1) (= (first data) "buffer"))]
+          isbuffer (and (= (count data) 1) (= (first data) "bin"))]
       (when (= nextchar ":")
         (if isbuffer
           [(nthnext start datalen) (conj data (js/Uint8Array. (take datalen start)))]
@@ -92,7 +92,7 @@
 
 ; some assumptions we need to make here:
 ;   - the root sequence contains key-value pairs
-;   - each buffer is in its own sequence, starting with atom "buffer"
+;   - each binary buffer is in its own sequence, starting with atom "bin"
 ;   - NOTE: The latter is currently NOT enforced by the above encoding code,
 ;     that should be refactored once the data format seems meaningful and stable enough
 ;   - the above also means that we can interpret everything non-buffer as a string

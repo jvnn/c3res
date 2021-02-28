@@ -27,7 +27,7 @@
   (is (= (buf-to-str (csexp/encode '("this" ("is" ("nested!!!!!")) "yo"))) "(4:this(2:is(11:nested!!!!!))2:yo)")))
 
 (deftest test-buf
-  (is (= (buf-to-str (csexp/encode (seq ["buffer:" (js/Uint8Array. (clj->js [35 33 33]))]))) "(7:buffer:3:#!!)")))
+  (is (= (buf-to-str (csexp/encode (seq ["bin:" (js/Uint8Array. (clj->js [35 33 33]))]))) "(4:bin:3:#!!)")))
 
 (deftest test-empty
   (is (= (buf-to-str (csexp/encode '())) "()")))
@@ -48,8 +48,8 @@
   (is (nil? (csexp/decode "(1:foo2:ab)")))
   (is (nil? (csexp/decode "(2:ab(1:a)"))))
 
-(deftest test-buffer-decode
-  (let [result (csexp/decode (map #(.charCodeAt % 0) (seq "(9:something(6:buffer3:#!!))")))
+(deftest test-binary-decode
+  (let [result (csexp/decode (map #(.charCodeAt % 0) (seq "(9:something(3:bin3:#!!))")))
         buffer (second (second result))]
     (is (instance? js/Uint8Array buffer))
     (is (= (buf-to-str buffer) "#!!"))))

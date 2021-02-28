@@ -29,7 +29,7 @@
         contents (seq ["timestamp" (str (.now js/Date)) "type" contenttype "raw" plaintext "tags" (seq tags)])
         box (.crypto_secretbox_easy sodium (csexp/encode contents) nonce stream-key)
         author-cap (.crypto_box_seal sodium stream-key (:public author-keypair))
-        shard (csexp/encode (seq ["authorcap" (seq ["buffer" author-cap]) "nonce" (seq ["buffer" nonce]) "data" (seq ["buffer" box])]))
+        shard (csexp/encode (seq ["authorcap" (seq ["bin" author-cap]) "nonce" (seq ["bin" nonce]) "data" (seq ["bin" box])]))
         shard-id (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard)]
     {:shard-id shard-id :shard shard}))
 
