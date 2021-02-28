@@ -7,6 +7,7 @@
 ; TODO: REMOVE ME once you can use up-to-date node version!
 (def util (node/require "util"))
 (def TextEncoder (.-TextEncoder util))
+(def TextDecoder (.-TextDecoder util))
 
 ; XXX: drop this obsolete map and replace with simple "write-string/buffer" and "get-string/buffer-len" functions
 (def TYPES {:string [#(.set (js/Uint8Array. (.-buffer %1)) (.encode (TextEncoder.) %3) %2) #(.-length (.encode (TextEncoder.) %))]
@@ -61,7 +62,11 @@
     (.fromCharCode js/String element)
     element))
 
-; TODO: use TextDecoder for the strings
+(defn- as-number [element]
+  (if (number? element)
+    element
+    (.charCodeAt element 0)))
+
 (defn- decode-single [remaining data]
   (when (get-int (as-char (first remaining)))
     (let [len-string (take-while #(get-int (as-char %)) remaining)
@@ -69,11 +74,12 @@
           stringlen (count len-string)
           nextchar (as-char (nth remaining stringlen))
           start (nthnext remaining (+ stringlen 1))
+          uint8buf (js/Uint8Array. (map as-number (take datalen start)))
           isbuffer (and (= (count data) 1) (= (first data) "bin"))]
       (when (= nextchar ":")
         (if isbuffer
-          [(nthnext start datalen) (conj data (js/Uint8Array. (take datalen start)))]
-          [(nthnext start datalen) (conj data (s/join (map as-char (take datalen start))))])))))
+          [(nthnext start datalen) (conj data uint8buf)]
+          [(nthnext start datalen) (conj data (.decode (TextDecoder.) uint8buf))])))))
 
 (defn- decode-internal [csexp]
   (loop [state :start remaining csexp data []]

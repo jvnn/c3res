@@ -53,3 +53,7 @@
         buffer (second (second result))]
     (is (instance? js/Uint8Array buffer))
     (is (= (buf-to-str buffer) "#!!"))))
+
+(deftest test-utf8-decode
+  (is (= (csexp/decode (js/Uint8Array. [40 51 58 226 130 172 41])) '("€"))))
+

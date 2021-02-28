@@ -42,3 +42,4 @@
         stream-key (.crypto_box_seal_open sodium cap (:public my-keypair) (:private my-keypair))
         plaintext (.crypto_secretbox_open_easy sodium data nonce stream-key)]
     (csexp-to-map (csexp/decode plaintext))))
+
