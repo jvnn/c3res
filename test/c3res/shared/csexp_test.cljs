@@ -4,21 +4,11 @@
             [clojure.string :as s]
             [c3res.shared.csexp :as csexp]))
 
-(deftest test-strings
-  (let [array (csexp/serialize [{:type :string :value "foo€bar"}])]
-    (is (= (str (js/Uint8Array. array)) "102,111,111,226,130,172,98,97,114"))))
-
-(deftest test-buffer
-  (let [array (csexp/serialize [{:type :buffer :value (.from js/Uint8Array (clj->js [1 2 3 9 8 7]))}])]
-    (is (= (str (js/Uint8Array. array)) "1,2,3,9,8,7"))))
-
-(deftest test-combined
-  (let [array (csexp/serialize [{:type :buffer :value (.from js/Uint8Array (clj->js [1 2 3]))}
-                                {:type :string :value "€a"}])]
-    (is (= (str (js/Uint8Array. array)) "1,2,3,226,130,172,97"))))
-
 (defn- buf-to-str [arraybuf]
   (.apply (.-fromCharCode js/String) nil (js/Uint8Array. arraybuf)))
+
+(deftest test-text-enconding
+  (is (= (str (csexp/encode '("€"))) "40,51,58,226,130,172,41")))
 
 (deftest test-encode-simple
   (is (= (buf-to-str (csexp/encode '("foo" "bar" "z"))) "(3:foo3:bar1:z)")))

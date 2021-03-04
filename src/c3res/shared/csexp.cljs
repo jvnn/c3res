@@ -9,49 +9,57 @@
 (def TextEncoder (.-TextEncoder util))
 (def TextDecoder (.-TextDecoder util))
 
-; XXX: drop this obsolete map and replace with simple "write-string/buffer" and "get-string/buffer-len" functions
-(def TYPES {:string [#(.set (js/Uint8Array. (.-buffer %1)) (.encode (TextEncoder.) %3) %2) #(.-length (.encode (TextEncoder.) %))]
-            :buffer [#(.set (js/Uint8Array. (.-buffer %1)) %3 %2) #(.-length %)]})  
+; XXX: remove unnecessary double TextEncoder usage
+(defn- put-str [buffer string len offset]
+  (.set (js/Uint8Array. (.-buffer buffer)) (.encode (TextEncoder.) string) offset)
+  (+ offset len))
 
-(defn- get-length [element]
-  (let [lenfn (last (TYPES (:type element)))]
-    (lenfn (:value element))))
+(defn- str-len [string]
+  (.-length (.encode (TextEncoder.) string)))
 
-(defn- insert-element [buf element offset]
-  (let [writefun (first (TYPES (:type element)))
-        size (get-length element)
-        val (:value element)]
-    (writefun buf offset val)
-    (+ offset size)))
+(defn- insert-string [buffer string offset]
+  (let [strlen (str-len string)
+        strlenstr (str strlen)
+        offset-after-len (put-str buffer strlenstr (count strlenstr) offset)
+        offset-after-colon (put-str buffer ":" 1 offset-after-len)]
+    (put-str buffer string strlen offset-after-colon)))
 
-(defn- buf-size [data]
-  (reduce #(+ %1 (get-length %2)) 0 data))
+(defn- insert-buffer [buffer toinsert offset]
+  (let [buflen (.-length toinsert)
+        buflenstr (str buflen)
+        offset-after-len (put-str buffer buflenstr (count buflenstr) offset)
+        offset-after-colon (put-str buffer ":" 1 offset-after-len)]
+    (.set (js/Uint8Array. (.-buffer buffer)) toinsert offset-after-colon)
+    (+ offset-after-colon buflen)))
 
-(defn serialize [data]
-  (let [buf (js/ArrayBuffer. (buf-size data))
-        view (js/DataView. buf)]
-    (loop [element (first data) remaining (rest data) offset 0]
-      (if element
-        (recur (first remaining) (rest remaining) (insert-element view element offset))
-        (js/Uint8Array. buf)))))
-
-(defn- add-length [len elements]
-  (conj elements {:type :string :value (str len)} {:type :string :value ":"}))
-
-(defn- encode-internal [sexp current-elements]
-  (loop [current (first sexp) remaining (rest sexp) elements current-elements]
+(defn- encode-internal [sexp buffer start-offset]
+  (loop [current (first sexp) remaining (rest sexp) offset start-offset]
     (if (some? current)
       (recur (first remaining) (rest remaining)
              (cond
-              (string? current) (conj (add-length (count current) elements) {:type :string :value current})
-              (instance? js/Uint8Array current) (conj (add-length (.-length current) elements) {:type :buffer :value current})
-              (seq? current) (encode-internal current (conj elements {:type :string :value "("}))
-              :else elements))
-      (conj elements {:type :string :value ")"})))) 
+              (string? current) (insert-string buffer current offset)
+              (instance? js/Uint8Array current) (insert-buffer buffer current offset)
+              (seq? current) (encode-internal current buffer (put-str buffer "(" 1 offset))
+              :else (throw "unexpected type")))
+      (put-str buffer ")" 1 offset))))
+
+(defn- get-length [element]
+  (if (seq? element)
+    (reduce #(+ %1 (get-length %2)) 2 element) ; 2 for "(" and ")"
+    (let [element-len (cond
+                        (string? element) (str-len element)
+                        (instance? js/Uint8Array element) (.-length element))
+          lenstrlen (count (str element-len))]
+      (+ element-len lenstrlen 1)))) ; +1 for colon
+
+(defn- buf-size [data]
+  (reduce #(+ %1 (get-length %2)) 2 data)) ; 2 for ( and )
 
 (defn encode [sexp]
-  (serialize (encode-internal sexp [{:type :string :value "("}])))
-
+  (let [buf (js/ArrayBuffer. (buf-size sexp))
+        view (js/DataView. buf)]
+    (encode-internal sexp view (put-str view "(" 1 0))
+    (js/Uint8Array. buf)))
 
 (defn- get-int [string]
   (let [parsed (js/parseFloat string)]
