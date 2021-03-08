@@ -1,5 +1,5 @@
 (ns c3res.client.core
-  (:require [c3res.shared.shards :as shards]
+  (:require [c3res.client.shards :as shards]
             [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [<!]])
   (:require-macros [cljs.core.async.macros :refer [go]]))

@@ -1,8 +1,7 @@
-(ns c3res.shared.shards
+(ns c3res.client.shards
   (:require [c3res.shared.csexp :as csexp]
             [cljs.nodejs :as node]
-            [cljs.core.async :as async :refer [chan close!]]
-            ))
+            [cljs.core.async :as async :refer [chan close!]]))
 
 (def sodium (node/require "libsodium-wrappers"))
 
