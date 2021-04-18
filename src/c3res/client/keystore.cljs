@@ -6,16 +6,13 @@
 (ns c3res.client.keystore
   (:require [c3res.client.shards :as shards]
             [c3res.client.sodiumhelper :as sod]
+            [c3res.client.storage :as storage]
             [clojure.string :as s]
             [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [<!]])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
 (def sodium (sod/get-sodium))
-
-(defn- split-key-input [input]
-  ; TODO: return a map with elements :key-seed :salt :memlimit and :opslimit
-  )
 
 (defn- combine [key-seed pw-hash]
   ; TODO: bitwise xor will probably work here
@@ -25,11 +22,11 @@
 ; The final key should be extracted by combining the seed and a (slow, brute-force resistant)
 ; hash of the password. Eventually the password should be stored on a keyring for better
 ; usability.
-(defn get-master-key [seed-location]
+(defn get-master-key [storage-opts password-getter]
   (go
-    (when-let [master-key-input (<! (fs/slurp seed-location))]
-      (let [key-info (split-key-input master-key-input)
-            user-pw (<! (interaction/request-password))
+    (when-let [master-key-input (<! (storage/get-master-key-input storage-opts))]
+      (let [key-info (shards/csexp-to-map (csexp/decode master-key-input))
+            user-pw (<! (password-getter))
             pw-hash (.crypto_pwhash sodium
                                     (.-crypto_box_PUBLICKEYBYTES sodium)
                                     user-pw
