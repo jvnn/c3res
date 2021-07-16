@@ -7,6 +7,7 @@
   (:require [c3res.client.shards :as shards]
             [c3res.client.sodiumhelper :as sod]
             [c3res.client.storage :as storage]
+            [c3res.shared.csexp :as csexp]
             [clojure.string :as s]
             [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [<!]])
@@ -14,9 +15,27 @@
 
 (def sodium (sod/get-sodium))
 
-(defn- combine [key-seed pw-hash]
-  ; TODO: bitwise xor will probably work here
-  )
+(defn- array-xor [x y]
+  (map #(bit-xor (first %) (second %)) (partition 2 (interleave x y))))
+
+(defn create-master-key [storage-opts password-getter]
+  (go
+    (let [new-key (shards/generate-keys)
+          user-pw (<! (password-getter))
+          salt (.randombytes_buf sodium (.-crypto_pwhash_SALTBYTES sodium))
+          opslimit (.-crypto_pwhash_OPSLIMIT_MODERATE sodium)
+          memlimit (.-crypto_pwhash_MEMLIMIT_MODERATE sodium)
+          pw-hash (.crypto_pwhash sodium
+                                  (.-crypto_box_PUBLICKEYBYTES sodium)
+                                  user-pw salt opslimit memlimit
+                                  (.-crypto_pwhash_ALG_DEFAULT sodium))]
+      (<! (storage/store-master-key-input storage-opts
+                                          (csexp/encode '("key-seed" ("bin" (array-xor (:private new-key) pw-hash))
+                                                          "salt" salt
+                                                          "opslimit" opslimit
+                                                          "memlimit" memlimit
+                                                          "public" (:public new-key)))))
+      new-key)))
 
 ; The master key is protected against device compromise by only storing a seed on disk.
 ; The final key should be extracted by combining the seed and a (slow, brute-force resistant)
@@ -34,5 +53,5 @@
                                     (:opslimit key-info)
                                     (:memlimit key-info)
                                     (.-crypto_pwhash_ALG_DEFAULT sodium))]
-        (combine (:key-seed key-info) pw-hash)))))
+        {:private (array-xor (:key-seed key-info) pw-hash) :public (:public key-info)}))))
 

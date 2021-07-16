@@ -9,14 +9,18 @@
 (def os (node/require "os"))
 (def path (node/require "path"))
 
+(defn- get-testfile []
+  (.join path (.tmpdir os) (str "c3res-storage-test-" (.-pid (node/require "process")) "-master-key-input")))
+
 (deftest test-joining-options
   (is (= (storage/join-opts {:master-key-path "/foo/bar" :whateva "unsupported"}) {:master-key-path "/foo/bar"}))
   (is (= (storage/join-opts {}) storage/default-opts)))
 
-(deftest test-getting-master-key-input
-  (let [testfile (.join path (.tmpdir os) (str "c3res-storage-test-" (.-pid (node/require "process")) "-master-key-input"))]
-    (.writeFileSync fs testfile "testcontents")
+(deftest test-store-get-master-key-input
+  (let [testfile (get-testfile)
+        opts {:master-key-path testfile}]
     (async done
            (go
-             (is (= "testcontents" (.toString (<! (storage/get-master-key-input {:master-key-path testfile})))))
+             (<! (storage/store-master-key-input opts "testcontents"))
+             (is (= "testcontents" (.toString (<! (storage/get-master-key-input opts)))))
              (done)))))
