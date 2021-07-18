@@ -30,11 +30,11 @@
                                   user-pw salt opslimit memlimit
                                   (.-crypto_pwhash_ALG_DEFAULT sodium))]
       (<! (storage/store-master-key-input storage-opts
-                                          (csexp/encode '("key-seed" ("bin" (array-xor (:private new-key) pw-hash))
-                                                          "salt" salt
-                                                          "opslimit" opslimit
-                                                          "memlimit" memlimit
-                                                          "public" (:public new-key)))))
+                                          (csexp/encode (seq ["key-seed" (seq ["bin" (js/Uint8Array. (array-xor (:private new-key) pw-hash))])
+                                                              "salt" (seq ["bin" salt])
+                                                              "opslimit" (str opslimit)
+                                                              "memlimit" (str memlimit)
+                                                              "public" (seq ["bin" (js/Uint8Array. (:public new-key))])]))))
       new-key)))
 
 ; The master key is protected against device compromise by only storing a seed on disk.
@@ -49,9 +49,9 @@
             pw-hash (.crypto_pwhash sodium
                                     (.-crypto_box_PUBLICKEYBYTES sodium)
                                     user-pw
-                                    (:salt key-info)
-                                    (:opslimit key-info)
-                                    (:memlimit key-info)
+                                    (second (:salt key-info)) ; XXX make the bloody bin stuff hidden in csexp
+                                    (int (:opslimit key-info))
+                                    (int (:memlimit key-info))
                                     (.-crypto_pwhash_ALG_DEFAULT sodium))]
-        {:private (array-xor (:key-seed key-info) pw-hash) :public (:public key-info)}))))
+        {:public (second (:public key-info)) :private (js/Uint8Array. (array-xor (second (:key-seed key-info)) pw-hash))}))))
 

@@ -24,5 +24,6 @@
              (<! (sod/init))
              (let [new-key (<! (keystore/create-master-key opts pw-getter))
                    retrieved-key (<! (keystore/get-master-key opts pw-getter))]
-               (is (= new-key retrieved-key)))
+               (is (= (vec (:public new-key)) (vec (:public retrieved-key))))
+               (is (= (vec (:private new-key)) (vec (:private retrieved-key))))) 
              (done)))))
