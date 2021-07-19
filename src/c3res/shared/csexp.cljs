@@ -38,7 +38,11 @@
       (recur (first remaining) (rest remaining)
              (cond
               (string? current) (insert-string buffer current offset)
-              (instance? js/Uint8Array current) (insert-buffer buffer current offset)
+              (instance? js/Uint8Array current) (->> offset
+                                                     (put-str buffer "(" 1)
+                                                     (insert-string buffer "!bin")
+                                                     (insert-buffer buffer current)
+                                                     (put-str buffer ")" 1))
               (seq? current) (encode-internal current buffer (put-str buffer "(" 1 offset))
               :else (throw "unexpected type")))
       (put-str buffer ")" 1 offset))))
@@ -46,11 +50,12 @@
 (defn- get-length [element]
   (if (seq? element)
     (reduce #(+ %1 (get-length %2)) 2 element) ; 2 for "(" and ")"
-    (let [element-len (cond
+    (let [isbuffer (instance? js/Uint8Array element)
+          element-len (cond
                         (string? element) (str-len element)
-                        (instance? js/Uint8Array element) (.-length element))
+                        isbuffer (.-length element))
           lenstrlen (count (str element-len))]
-      (+ element-len lenstrlen 1)))) ; +1 for colon
+      (+ element-len lenstrlen 1 (if isbuffer 8 0))))) ; +1 for colon, +8 for "(4:!bin" and ")" 
 
 (defn- buf-size [data]
   (reduce #(+ %1 (get-length %2)) 2 data)) ; 2 for ( and )
@@ -83,10 +88,10 @@
           nextchar (as-char (nth remaining stringlen))
           start (nthnext remaining (+ stringlen 1))
           uint8buf (js/Uint8Array. (map as-number (take datalen start)))
-          isbuffer (and (= (count data) 1) (= (first data) "bin"))]
+          isbuffer (and (= (count data) 1) (= (first data) "!bin"))]
       (when (= nextchar ":")
         (if isbuffer
-          [(nthnext start datalen) (conj data uint8buf)]
+          [(nthnext start datalen) uint8buf] ; drop the "!bin" marker
           [(nthnext start datalen) (conj data (.decode (TextDecoder.) uint8buf))])))))
 
 (defn- decode-internal [csexp]
@@ -97,7 +102,11 @@
         :len (let [[newremaining newdata] (decode-single remaining data)] (recur :next newremaining newdata))
         :next (cond
                 (= current "(")
-                (let [[newremaining newdata] (decode-internal remaining)] (recur :next newremaining (conj data (seq newdata))))
+                (let [[newremaining newdata] (decode-internal remaining)] (recur :next newremaining
+                                                                                 ; check for single binary buffer (decoded from "!bin" entry), and don't seq it
+                                                                                 (conj data (if (instance? js/Uint8Array newdata)
+                                                                                              newdata
+                                                                                              (seq newdata)))))
                 (= current ")")
                 [(rest remaining) data]
                 :else ; in well-formed csexp this has to be a length string
@@ -106,7 +115,7 @@
 
 ; some assumptions we need to make here:
 ;   - the root sequence contains key-value pairs
-;   - each binary buffer is in its own sequence, starting with atom "bin"
+;   - each binary buffer is in its own sequence, marked internally with with atom "!bin"
 ;   - NOTE: The latter is currently NOT enforced by the above encoding code,
 ;     that should be refactored once the data format seems meaningful and stable enough
 ;   - the above also means that we can interpret everything non-buffer as a string
