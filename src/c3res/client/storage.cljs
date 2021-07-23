@@ -17,12 +17,12 @@
 (defn store-master-key-input [custom-opts csexp]
   (let [opts (join-opts custom-opts)
         c (chan)]
-    (.writeFile fs (opts :master-key-path) csexp #(if %1 (put! c nil) (put! c true)))
+    (.writeFile fs (opts :master-key-path) csexp #(if %1 (put! c false) (put! c true)))
     c))
 
 (defn get-master-key-input [custom-opts]
   (let [opts (join-opts custom-opts)
         c (chan)]
-    (.readFile fs (opts :master-key-path) #(if %1 (put! c nil) (put! c %2)))
+    (.readFile fs (opts :master-key-path) #(if %1 (put! c false) (put! c %2)))
     c))
 

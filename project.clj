@@ -12,7 +12,8 @@
   :npm
     {:dependencies
      [[source-map-support "0.5.19"]
-      [libsodium-wrappers "0.7.9"]]}
+      [libsodium-wrappers "0.7.9"]
+      [prompt "1.1.0"]]}
 
   :clean-targets ^{:protect false} ["server_out" "client_out" "test_out"]
 
@@ -32,9 +33,9 @@
          :compiler {:main c3res.client.core
                     :output-to "client_out/client.js"
                     :output-dir "client_out"
-                    :source-map "client_out/src-map"
+                    :source-map true ;"client_out/src-map"
                     :target :nodejs
-                    :optimizations :simple
+                    :optimizations :none
                     :verbose true}}
        :test
         {:source-paths ["src" "test"]

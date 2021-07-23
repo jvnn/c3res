@@ -29,6 +29,7 @@
                                   (.-crypto_box_PUBLICKEYBYTES sodium)
                                   user-pw salt opslimit memlimit
                                   (.-crypto_pwhash_ALG_DEFAULT sodium))]
+      ; XXX HANDLE ERROR CASE WHEN STORING
       (<! (storage/store-master-key-input storage-opts
                                           (csexp/encode (seq ["key-seed" (js/Uint8Array. (array-xor (:private new-key) pw-hash))
                                                               "salt" salt
@@ -43,7 +44,7 @@
 ; usability.
 (defn get-master-key [storage-opts password-getter]
   (go
-    (when-let [master-key-input (<! (storage/get-master-key-input storage-opts))]
+    (if-let [master-key-input (<! (storage/get-master-key-input storage-opts))]
       (let [key-info (shards/csexp-to-map (csexp/decode master-key-input))
             user-pw (<! (password-getter))
             pw-hash (.crypto_pwhash sodium
@@ -53,5 +54,6 @@
                                     (int (:opslimit key-info))
                                     (int (:memlimit key-info))
                                     (.-crypto_pwhash_ALG_DEFAULT sodium))]
-        {:public (:public key-info) :private (js/Uint8Array. (array-xor (:key-seed key-info) pw-hash))}))))
+        {:public (:public key-info) :private (js/Uint8Array. (array-xor (:key-seed key-info) pw-hash))})
+      false)))
 
