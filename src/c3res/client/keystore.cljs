@@ -11,7 +11,7 @@
             [clojure.string :as s]
             [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [<!]])
-  (:require-macros [cljs.core.async.macros :refer [go]]))
+  (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
 (def sodium (sod/get-sodium))
 
@@ -43,17 +43,26 @@
 ; hash of the password. Eventually the password should be stored on a keyring for better
 ; usability.
 (defn get-master-key [storage-opts password-getter]
-  (go
+  (go-loop [msg "An existing master key file found, trying to extract keys..."]
     (if-let [master-key-input (<! (storage/get-master-key-input storage-opts))]
-      (let [key-info (shards/csexp-to-map (csexp/decode master-key-input))
-            user-pw (<! (password-getter))
-            pw-hash (.crypto_pwhash sodium
-                                    (.-crypto_box_PUBLICKEYBYTES sodium)
-                                    user-pw
-                                    (:salt key-info)
-                                    (int (:opslimit key-info))
-                                    (int (:memlimit key-info))
-                                    (.-crypto_pwhash_ALG_DEFAULT sodium))]
-        {:public (:public key-info) :private (js/Uint8Array. (array-xor (:key-seed key-info) pw-hash))})
+      (do
+        (when (not (s/blank? msg)) (print msg))
+        (let [key-info (shards/csexp-to-map (csexp/decode master-key-input))
+              user-pw (<! (password-getter))
+              pw-hash (.crypto_pwhash sodium
+                                      (.-crypto_box_PUBLICKEYBYTES sodium)
+                                      user-pw
+                                      (:salt key-info)
+                                      (int (:opslimit key-info))
+                                      (int (:memlimit key-info))
+                                      (.-crypto_pwhash_ALG_DEFAULT sodium))
+              priv-key (js/Uint8Array. (array-xor (:key-seed key-info) pw-hash))]
+          ; test that we really got a working key pait
+          (if-let [checked-keypair (try
+                                     (.crypto_box_seal_open sodium (.crypto_box_seal sodium "test" (:public key-info)) (:public key-info) priv-key)
+                                     {:public (:public key-info) :private priv-key}
+                                     (catch js/Error))]
+            checked-keypair
+            (recur "Invalid password for master key, please try again"))))
       false)))
 
