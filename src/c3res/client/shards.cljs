@@ -23,7 +23,7 @@
         author-cap (.crypto_box_seal sodium stream-key (:public author-keypair))
         shard (csexp/encode (seq ["shard" (seq ["authorcap" author-cap]) (seq ["nonce" nonce]) (seq ["data" box])]))
         shard-id (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard)]
-    {:shard-id shard-id :shard shard}))
+    {:id (.to_hex sodium shard-id) :data shard}))
 
 ; currently just for my own shards: todo, add support for read caps
 (defn read-shard [shard my-keypair]
