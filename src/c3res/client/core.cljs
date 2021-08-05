@@ -1,6 +1,6 @@
 (ns c3res.client.core
   (:require [c3res.client.keystore :as keystore]
-            [c3res.client.shards :as shards]
+            [c3res.client.push :as push]
             [c3res.client.sodiumhelper :as sod]
             [c3res.client.storage :as storage]
             [clojure.string :as s]
@@ -49,11 +49,11 @@
 
 (defn- get-or-create-master-key []
   (go
-    (if-let [master-key (<! (keystore/get-master-key storage/default-opts get-password-interactive))]
+    (if-let [master-key (<! (keystore/get-master-key {} get-password-interactive))]
       master-key
       (do
         (print "No master key detected, creating a new one.")
-        (<! (keystore/create-master-key storage/default-opts create-password-interactive))))))
+        (<! (keystore/create-master-key {} create-password-interactive))))))
 
 (defn main [& args]
   (go

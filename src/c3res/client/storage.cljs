@@ -9,7 +9,8 @@
 (def os (node/require "os"))
 (def path (node/require "path"))
 
-(def default-opts {:master-key-path (.join path (.homedir os) ".c3res/master-key-input")})
+(def default-opts {:master-key-path (.join path (.homedir os) ".c3res/master-key-input")
+                   :shard-cache-path (.join path (.homedir os) ".c3res/cache")})
 
 (defn join-opts [opts]
   (reduce #(if (default-opts %2) (assoc %1 %2 (opts %2)) %1) default-opts (keys opts)))
@@ -25,4 +26,8 @@
         c (chan)]
     (.readFile fs (opts :master-key-path) #(if %1 (put! c false) (put! c %2)))
     c))
+
+(defn cache-shard [shard custom-opts]
+  (print (str "would cache shard with id " (:shard-id shard)))
+  true)
 

@@ -13,7 +13,7 @@
   (.join path (.tmpdir os) (str "c3res-storage-test-" (.-pid (node/require "process")) "-master-key-input")))
 
 (deftest test-joining-options
-  (is (= (storage/join-opts {:master-key-path "/foo/bar" :whateva "unsupported"}) {:master-key-path "/foo/bar"}))
+  (is (= (storage/join-opts {:master-key-path "/foo/bar" :whateva "unsupported"}) {:master-key-path "/foo/bar" :shard-cache-path (storage/default-opts :shard-cache-path)}))
   (is (= (storage/join-opts {}) storage/default-opts)))
 
 (deftest test-store-get-master-key-input
