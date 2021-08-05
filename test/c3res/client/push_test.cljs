@@ -21,3 +21,16 @@
              (is (some? should-be-id))
              (is (nil? (:error should-be-id))))
            (done))))
+
+(deftest test-invalid-shards
+  (async done
+         (go
+           (<! (sod/init))
+           (let [keys (shards/generate-keys)]
+             (is (some? (:error (push/new-shard "" {"label" "val"} "type" (chan) {:shard-cache-path (get-testpath)} keys))))
+             (is (some? (:error (push/new-shard "foo" {1 "val"} "type" (chan) {:shard-cache-path (get-testpath)} keys))))
+             (is (some? (:error (push/new-shard "foo" {"label" 4} "type" (chan) {:shard-cache-path (get-testpath)} keys))))
+             (is (some? (:error (push/new-shard "foo" ["label" "val"] "type" (chan) {:shard-cache-path (get-testpath)} keys))))
+             (is (some? (:error (push/new-shard "foo" {"label" "val"} "" (chan) {:shard-cache-path (get-testpath)} keys))))
+             (is (nil? (:error (push/new-shard "foo" {"label" "val"} "type" (chan) {:shard-cache-path (get-testpath)} keys)))))
+           (done))))

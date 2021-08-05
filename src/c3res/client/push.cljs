@@ -10,7 +10,7 @@
   (cond
     (not (and (map? labels) (every? string? (keys labels)) (every? string? (vals labels))))
     {:error "Invalid labels provided: expecting a string-string map"}
-    (not (string? content-type))
+    (or (not (string? content-type)) (s/blank? content-type))
     {:error "Invalid content type: expecting a string"}
     (or (s/blank? content) (empty? content))
     {:error "Invalid content: expecting a non-empty string or byte array"}
