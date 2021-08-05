@@ -31,11 +31,12 @@
                                   (.-crypto_pwhash_ALG_DEFAULT sodium))]
       ; XXX HANDLE ERROR CASE WHEN STORING
       (<! (storage/store-master-key-input storage-opts
-                                          (csexp/encode (seq ["key-seed" (js/Uint8Array. (array-xor (:private new-key) pw-hash))
-                                                              "salt" salt
-                                                              "opslimit" (str opslimit)
-                                                              "memlimit" (str memlimit)
-                                                              "public" (:public new-key)]))))
+                                          (csexp/encode (seq ["master-key"
+                                                              (seq ["key-seed" (js/Uint8Array. (array-xor (:private new-key) pw-hash))])
+                                                              (seq ["salt" salt])
+                                                              (seq ["opslimit" (str opslimit)])
+                                                              (seq ["memlimit" (str memlimit)])
+                                                              (seq ["public" (:public new-key)])]))))
       new-key)))
 
 ; The master key is protected against device compromise by only storing a seed on disk.

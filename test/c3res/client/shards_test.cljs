@@ -11,6 +11,9 @@
   (async done
     (go
       (<! (sod/init))
-      (let [keypair (shards/generate-keys)]
-        (is (= (:raw (shards/read-shard (:shard (shards/create-shard "foo" [] "text/plain" keypair)) keypair)) "foo"))
+      (let [keypair (shards/generate-keys)
+            shard (:shard (shards/create-shard "foo" {"label1" "value1" "label2" "value2"} "text/plain" keypair))
+            contents (shards/read-shard shard keypair)]
+        (is (= (:raw contents) "foo"))
+        (is (= (:labels contents) '("map" ("label1" "value1") ("label2" "value2"))))
         (done)))))

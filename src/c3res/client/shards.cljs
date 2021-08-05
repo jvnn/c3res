@@ -11,26 +11,26 @@
     {:public (.-publicKey keypair) :private (.-privateKey keypair)}))
 
 (defn csexp-to-map [csexp]
-  ; by convention c3res is using key-value pairs in the root level s-expressions,
-  ; so lets make life easier by converting them to clj maps with keywords
-  (apply hash-map (map-indexed #(if (even? %1) (keyword %2) %2) csexp)))
+  ; expected stucture: ("shard" ("raw" "some contents") ("timestamp" "1234321323") ... )
+  (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} (rest csexp)))
 
-(defn create-shard [plaintext tags contenttype author-keypair]
+(defn create-shard [plaintext labels contenttype author-keypair]
   (let [stream-key (.crypto_secretbox_keygen sodium)
         nonce (.randombytes_buf sodium (.-crypto_secretbox_NONCEBYTES sodium))
-        contents (seq ["timestamp" (str (.now js/Date)) "type" contenttype "raw" plaintext "tags" (seq tags)])
+        keyvaluelabels (map seq (seq labels)) ; first seq converts a map to sequence of vectors
+        contents (seq ["contents" (seq ["timestamp" (str (.now js/Date))]) (seq ["type" contenttype]) (seq ["raw" plaintext]) (seq ["labels" (conj keyvaluelabels "map")])])
         box (.crypto_secretbox_easy sodium (csexp/encode contents) nonce stream-key)
         author-cap (.crypto_box_seal sodium stream-key (:public author-keypair))
-        shard (csexp/encode (seq ["authorcap" (seq ["bin" author-cap]) "nonce" (seq ["bin" nonce]) "data" (seq ["bin" box])]))
+        shard (csexp/encode (seq ["shard" (seq ["authorcap" author-cap]) (seq ["nonce" nonce]) (seq ["data" box])]))
         shard-id (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard)]
     {:shard-id shard-id :shard shard}))
 
 ; currently just for my own shards: todo, add support for read caps
 (defn read-shard [shard my-keypair]
   (let [shard-map (csexp-to-map (csexp/decode shard))
-        cap (second (:authorcap shard-map))
-        nonce (second (:nonce shard-map))
-        data (second (:data shard-map))
+        cap (:authorcap shard-map)
+        nonce (:nonce shard-map)
+        data (:data shard-map)
         stream-key (.crypto_box_seal_open sodium cap (:public my-keypair) (:private my-keypair))
         plaintext (.crypto_secretbox_open_easy sodium data nonce stream-key)]
     (csexp-to-map (csexp/decode plaintext))))
