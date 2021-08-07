@@ -36,14 +36,24 @@
     (.readFile fs (opts :master-key-path) #(if %1 (put! c false) (put! c %2)))
     c))
 
+(defn- get-cache-filename [custom-opts id]
+   (let [opts (join-opts custom-opts)
+         cache-path (opts :shard-cache-path)
+         id-start (subs id 0 2)
+         dir-path (.join path cache-path id-start)
+         full-path (.join path dir-path id)
+         c (chan)]
+     (go
+       (if (<! (ensure-dir dir-path))
+         (put! c full-path)
+         (put! c false)))
+     c))
+
 (defn cache-shard [shard custom-opts]
-  (let [opts (join-opts custom-opts)
-        cache-path (opts :shard-cache-path)
-        c (chan)]
+  (let [c (chan)]
     (go
-      (if (<! (ensure-dir cache-path))
-        (.writeFile fs (.join path cache-path (:id shard)) (:data shard)
-                    #(if %1 (put! c false) (put! c true)))
+      (if-let [cache-file (<! (get-cache-filename custom-opts (:id shard)))]
+        (.writeFile fs cache-file (:data shard) #(if %1 (put! c false) (put! c true)))
         (put! c false)))
     c))
 
