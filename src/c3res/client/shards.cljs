@@ -11,8 +11,13 @@
     {:public (.-publicKey keypair) :private (.-privateKey keypair)}))
 
 (defn csexp-to-map [csexp]
-  ; expected stucture: ("shard" ("raw" "some contents") ("timestamp" "1234321323") ... )
-  (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} (rest csexp)))
+  ; expected stucture: ("shard" ("raw" "some contents") ("timestamp" "1234321323") ("labels" ("map" (...)) ... )
+  (->> (rest csexp)
+       (map
+         #(if (and (= (first %) "labels") (= (first (second %)) "map"))
+            (seq ["labels" (apply hash-map (flatten (rest (second %))))])
+            %))
+       (reduce #(assoc %1 (keyword (first %2)) (second %2)) {})))
 
 (defn create-shard [plaintext labels contenttype author-keypair]
   (let [stream-key (.crypto_secretbox_keygen sodium)
@@ -34,4 +39,10 @@
         stream-key (.crypto_box_seal_open sodium cap (:public my-keypair) (:private my-keypair))
         plaintext (.crypto_secretbox_open_easy sodium data nonce stream-key)]
     (csexp-to-map (csexp/decode plaintext))))
+
+(defn pretty-print [shard]
+  (print "-----")
+  (doseq [part [[:timestamp "\t"] [:type "\t\t"] [:labels "\t\t"] [:raw "\n"]]]
+    (print (str (name (first part)) ":" (second part) (shard (first part)))))
+  (print "-----"))
 

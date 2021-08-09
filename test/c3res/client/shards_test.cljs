@@ -15,5 +15,5 @@
             shard (:data (shards/create-shard "foo" {"label1" "value1" "label2" "value2"} "text/plain" keypair))
             contents (shards/read-shard shard keypair)]
         (is (= (:raw contents) "foo"))
-        (is (= (:labels contents) '("map" ("label1" "value1") ("label2" "value2"))))
+        (is (= (:labels contents) {"label1" "value1" "label2" "value2"}))
         (done)))))

@@ -2,6 +2,7 @@
   (:require [c3res.client.keystore :as keystore]
             [c3res.client.cache :as cache]
             [c3res.client.sodiumhelper :as sod]
+            [c3res.client.shards :as shards]
             [c3res.client.storage :as storage]
             [clojure.string :as s]
             [cljs.nodejs :as node]
@@ -102,7 +103,7 @@
             (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
                                      #(when-not %1 (go (print (<! (cache/new-shard %2 {"origin" "c3res-cli"} "text/plain" (chan 1) {} master-key))))))
             (:fetch args) (if-let [contents (<! (cache/fetch (:fetch args) {} master-key))]
-                            (print contents)
+                            (shards/pretty-print contents)
                             (print "Could not find shard with id" (:fetch args)))
             (:server args) (.listen (.createServer http) 3000)))))))
 
