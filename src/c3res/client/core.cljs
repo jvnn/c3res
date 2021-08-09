@@ -15,6 +15,7 @@
 
 (def fs (node/require "fs"))
 (def http (node/require "http"))
+(def path (node/require "path"))
 (def process (node/require "process"))
 
 (defn- confirm-password-interactive-internal [to-confirm]
@@ -65,9 +66,11 @@
     (case key
       :password (if (s/blank? value) (print "Invalid or missing password") true)
       :store (if-not (<! (storage/file-accessible value)) (print (str "Cannot find or access file '" value "' to store")) true)
+      :labels (if (or (nil? (:store args)) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
+                (print "Invalid label(s) or labels provided without --store") true)
       :fetch (if-not (re-matches #"[0-9a-f]{64}" value) (print "Invalid id hash") true)
       :server (if (some #(contains? args %) [:store :fetch]) (print "Cannot use --server together with --store / --fetch") true)
-      :daemon (if (or (not (:server args)) (some #(contains? args %) [:store :fetch]))
+      :daemon (if (or (nil? (:server args)) (some #(contains? args %) [:store :fetch]))
                 (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false)))))
 
 (defn- validate-args [args]
@@ -84,10 +87,19 @@
       (case (first current)
         "--password" (recur (assoc args :password (second current)) (nnext current))
         "--store" (recur (assoc args :store (second current)) (nnext current))
+        "--label" (recur (assoc args :labels (conj (or (:labels args) []) (second current))) (nnext current))
         "--fetch" (recur (assoc args :fetch (second current)) (nnext current))
         "--server" (recur (assoc args :server true) (next current))
         "--daemon" (recur (assoc args :daemon true) (next current))
         (do (print "Invalid argument" (first current)) (.exit process 1))))))
+
+(defn- get-labels [args]
+  (let [filename (.basename path (:store args))
+        label-vec (map #(vec [(second (re-find #"^([^=]+)=" %)) (second (re-find #"=(.+)" %))]) (or (:labels args) []))
+        labels (reduce #(assoc %1 (first %2) (second %2)) {} label-vec)]
+    (-> labels
+        (assoc "origin" "c3res-cli")
+        (assoc "filename" filename))))
 
 (defn main [& argv]
   (go
@@ -97,11 +109,9 @@
         (let [master-key (<! (get-or-create-master-key (:password args)))]
           (cond
             ; CONTINUE HERE:
-            ;    - implement shards/print, which pretty-prints a shard (and call it from this version of fetch)
-            ;    - implement adding labels
-            ;    - implement (poor man's...?) mime type detection (or check for libraries)
+            ;    - implement mime type support (check npm mime package)
             (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                     #(when-not %1 (go (print (<! (cache/new-shard %2 {"origin" "c3res-cli"} "text/plain" (chan 1) {} master-key))))))
+                                     #(when-not %1 (go (print (<! (cache/new-shard %2 (get-labels args) "text/plain" (chan 1) {} master-key))))))
             (:fetch args) (if-let [contents (<! (cache/fetch (:fetch args) {} master-key))]
                             (shards/pretty-print contents)
                             (print "Could not find shard with id" (:fetch args)))
