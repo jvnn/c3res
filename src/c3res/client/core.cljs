@@ -59,17 +59,12 @@
           (print "No master key detected, creating a new one.")
           (<! (keystore/create-master-key {} create-password-interactive)))))))
 
-(defn- access [path]
-  (let [c (chan)]
-    (.access fs path #(if %1 (put! c false) (put! c true)))
-    c))
-
 (defn- validate-arg [key value args]
   (go
     (case key
       :password (if (s/blank? value) (print "Invalid or missing password") true)
-      :store (if (not (<! (access value))) (print (str "Cannot find or access file '" value "' to store")) true)
-      :fetch (do (print "Fetching not yet implemented...") false)
+      :store (if-not (<! (storage/file-accessible value)) (print (str "Cannot find or access file '" value "' to store")) true)
+      :fetch (if-not (re-matches #"[0-9a-f]{64}" value) (print "Invalid id hash") true)
       :server (if (some #(contains? args %) [:store :fetch]) (print "Cannot use --server together with --store / --fetch") true)
       :daemon (if (or (not (:server args)) (some #(contains? args %) [:store :fetch]))
                 (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false)))))
@@ -96,16 +91,18 @@
 (defn main [& argv]
   (go
     (<! (sod/init))
-    (print (str "running c3res client with arguments " (s/join " " argv)))
     (go
       (when-let [args (<! (parse-args argv))]
         (let [master-key (<! (get-or-create-master-key (:password args)))]
           (cond
             ; CONTINUE HERE:
-            ;    - implement fetching from cache to check that we store stuff successfully
+            ;    - implement shards/print, which pretty-prints a shard (and call it from this version of fetch)
             ;    - implement adding labels
             ;    - implement (poor man's...?) mime type detection (or check for libraries)
-            (:store args) (.readFile fs (:store args) #(when-not %1 (go (<! (cache/new-shard %2 {"test" "label"} "text/plain" (chan 1) {} master-key)))))
+            (:store args) (.readFile fs (:store args) #(when-not %1 (go (<! (cache/new-shard %2 {"origin" "c3res-cli"} "text/plain" (chan 1) {} master-key)))))
+            (:fetch args) (if-let [contents (<! (cache/fetch (:fetch args) {} master-key))]
+                            (print contents)
+                            (print "Could not find shard with id" (:fetch args)))
             (:server args) (.listen (.createServer http) 3000)))))))
 
 (set! *main-cli-fn* main)

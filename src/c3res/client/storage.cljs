@@ -17,6 +17,11 @@
     (.mkdir fs path (clj->js {:recursive true :mode 0750}) #(put! c (nil? %1)))
     c))
 
+(defn file-accessible [path]
+  (let [c (chan)]
+    (.access fs path #(if %1 (put! c false) (put! c true)))
+    c))
+
 (defn join-opts [opts]
   (reduce #(if (default-opts %2) (assoc %1 %2 (opts %2)) %1) default-opts (keys opts)))
 
@@ -39,21 +44,25 @@
 (defn- get-cache-filename [custom-opts id]
    (let [opts (join-opts custom-opts)
          cache-path (opts :shard-cache-path)
-         id-start (subs id 0 2)
-         dir-path (.join path cache-path id-start)
-         full-path (.join path dir-path id)
-         c (chan)]
-     (go
-       (if (<! (ensure-dir dir-path))
-         (put! c full-path)
-         (put! c false)))
-     c))
+         id-start (subs id 0 2)]
+     (.join path cache-path id-start id)))
 
 (defn cache-shard [shard custom-opts]
-  (let [c (chan)]
+  (let [c (chan)
+        cache-file (get-cache-filename custom-opts (:id shard))]
     (go
-      (if-let [cache-file (<! (get-cache-filename custom-opts (:id shard)))]
+      (if (<! (ensure-dir (.dirname path cache-file)))
         (.writeFile fs cache-file (:data shard) #(if %1 (put! c false) (put! c true)))
+        (put! c false)))
+    c))
+
+(defn get-from-cache [id custom-opts]
+  (let [path (get-cache-filename custom-opts id)
+        c (chan)]
+    (go
+      (print path)
+      (if (<! (file-accessible path))
+        (.readFile fs path #(if %1 (put! c false) (put! c %2)))
         (put! c false)))
     c))
 

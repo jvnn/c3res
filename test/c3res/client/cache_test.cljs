@@ -14,7 +14,7 @@
 (defn- get-testpath []
   (.join path (.tmpdir os) "c3res-cache-test" (str (.-pid (node/require "process")))))
 
-(deftest tests-caching-shard
+(deftest test-caching-shard
   (async done
          (go
            (<! (sod/init))
@@ -45,4 +45,15 @@
              (.mkdirSync fs testpath (clj->js {:mode 0400}))
              (is (some? (:error (<! (cache/new-shard "foo" {"label" "val"} "type" (chan 1) {:shard-cache-path testpath} (shards/generate-keys))))))
              (done)))))
+
+(deftest test-cache-and-fetch
+  (async done
+         (go
+           (<! (sod/init))
+           (let [opts {:shard-cache-path (get-testpath)}
+                 keys (shards/generate-keys)
+                 id (<! (cache/new-shard "foo" {"label1" "value1"} "text/plain" (chan 1) opts keys))
+                 shard (<! (cache/fetch id opts keys))]
+             (is (= (:raw shard) "foo")))
+           (done))))
 

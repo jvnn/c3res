@@ -25,3 +25,9 @@
             (>! upstream-chan (:id shard))
             (:id shard)))))))
 
+(defn fetch [id custom-storage-opts my-keys]
+  (go
+    ; TODO: replace nil here with a request to server 
+    (when-let [shard (or (<! (storage/get-from-cache id custom-storage-opts)) nil)]
+      (shards/read-shard shard my-keys))))
+
