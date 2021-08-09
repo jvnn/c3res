@@ -60,7 +60,6 @@
   (let [path (get-cache-filename custom-opts id)
         c (chan)]
     (go
-      (print path)
       (if (<! (file-accessible path))
         (.readFile fs path #(if %1 (put! c false) (put! c %2)))
         (put! c false)))

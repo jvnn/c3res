@@ -99,7 +99,8 @@
             ;    - implement shards/print, which pretty-prints a shard (and call it from this version of fetch)
             ;    - implement adding labels
             ;    - implement (poor man's...?) mime type detection (or check for libraries)
-            (:store args) (.readFile fs (:store args) #(when-not %1 (go (<! (cache/new-shard %2 {"origin" "c3res-cli"} "text/plain" (chan 1) {} master-key)))))
+            (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
+                                     #(when-not %1 (go (print (<! (cache/new-shard %2 {"origin" "c3res-cli"} "text/plain" (chan 1) {} master-key))))))
             (:fetch args) (if-let [contents (<! (cache/fetch (:fetch args) {} master-key))]
                             (print contents)
                             (print "Could not find shard with id" (:fetch args)))
