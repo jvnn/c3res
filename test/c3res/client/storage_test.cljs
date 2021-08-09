@@ -10,7 +10,7 @@
 (def path (node/require "path"))
 
 (defn- get-testfile []
-  (.join path (.tmpdir os) (str "c3res-storage-test-" (.-pid (node/require "process")) "-master-key-input")))
+  (.join path (.tmpdir os) "c3res-storage-test" (str (.-pid (node/require "process"))) "master-key-input"))
 
 (deftest test-joining-options
   (is (= (storage/join-opts {:master-key-path "/foo/bar" :whateva "unsupported"}) {:master-key-path "/foo/bar" :shard-cache-path (storage/default-opts :shard-cache-path)}))

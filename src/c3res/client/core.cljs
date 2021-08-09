@@ -1,6 +1,6 @@
 (ns c3res.client.core
   (:require [c3res.client.keystore :as keystore]
-            [c3res.client.push :as push]
+            [c3res.client.cache :as cache]
             [c3res.client.sodiumhelper :as sod]
             [c3res.client.storage :as storage]
             [clojure.string :as s]

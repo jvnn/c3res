@@ -1,4 +1,4 @@
-(ns c3res.client.push
+(ns c3res.client.cache
   (:require [c3res.client.shards :as shards]
             [c3res.client.storage :as storage]
             [clojure.string :as s]
@@ -9,8 +9,10 @@
 (defn new-shard [content labels content-type upstream-chan custom-storage-opts my-keys]
   (go
     (cond
-      (not (and (map? labels) (every? string? (keys labels)) (every? string? (vals labels))))
+      (not (map? labels))
       {:error "Invalid labels provided: expecting a string-string map"}
+      (not (and (every? string? (keys labels)) (every? string? (vals labels))))
+      {:error "Invalid labels provided: keys and values should be strings"}
       (or (not (string? content-type)) (s/blank? content-type))
       {:error "Invalid content type: expecting a string"}
       (or (s/blank? content) (empty? content))

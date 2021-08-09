@@ -11,7 +11,7 @@
 (def path (node/require "path"))
 
 (defn- get-testfile []
-  (.join path (.tmpdir os) (str "c3res-keystore-tests" (.-pid (node/require "process")) "-master-key-input")))
+  (.join path (.tmpdir os) "c3res-keystore-test" (str (.-pid (node/require "process"))) "master-key-input"))
 
 (defn- pw-getter []
   (go "foobar"))
