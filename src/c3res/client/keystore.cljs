@@ -16,28 +16,39 @@
 (def sodium (sod/get-sodium))
 
 (defn- array-xor [x y]
-  (map #(bit-xor (first %) (second %)) (partition 2 (interleave x y))))
+  (js/Uint8Array. (map #(bit-xor (first %) (second %)) (partition 2 (interleave x y)))))
 
-(defn create-master-key [custom-storage-opts password-getter]
+; use part of key-seed as salt to allow for regeneration based on key seed string (assuming saltbytes <= seedbytes, true as of now)
+(defn- extract-salt [key-seed]
+  (.slice key-seed 0 (.-crypto_pwhash_SALTBYTES sodium)))
+
+(defn create-master-key [custom-storage-opts password-getter key-seed-getter]
   (go
-    (let [new-key (shards/generate-keys)
-          user-pw (<! (password-getter))
-          salt (.randombytes_buf sodium (.-crypto_pwhash_SALTBYTES sodium))
-          opslimit (.-crypto_pwhash_OPSLIMIT_MODERATE sodium)
+    (let [opslimit (.-crypto_pwhash_OPSLIMIT_MODERATE sodium)
           memlimit (.-crypto_pwhash_MEMLIMIT_MODERATE sodium)
+          key-seed-str (<! (key-seed-getter))
+          key-seed (if (empty? key-seed-str)
+                     (.randombytes_buf sodium (.-crypto_box_SEEDBYTES sodium))
+                     (.crypto_pwhash sodium
+                                     (.-crypto_box_SEEDBYTES sodium)
+                                     key-seed-str
+                                     (js/Uint8Array. (.-crypto_pwhash_SALTBYTES sodium)) ; all zero salt, as seed string should be enough to recreate
+                                     opslimit memlimit (.-crypto_pwhash_ALG_DEFAULT sodium)))
+          user-pw (<! (password-getter))
           pw-hash (.crypto_pwhash sodium
                                   (.-crypto_box_PUBLICKEYBYTES sodium)
-                                  user-pw salt opslimit memlimit
-                                  (.-crypto_pwhash_ALG_DEFAULT sodium))]
+                                  user-pw
+                                  (extract-salt key-seed)
+                                  opslimit memlimit (.-crypto_pwhash_ALG_DEFAULT sodium))
+          new-keypair (.crypto_box_seed_keypair sodium (array-xor key-seed pw-hash))]
       ; XXX HANDLE ERROR CASE WHEN STORING
       (<! (storage/store-master-key-input custom-storage-opts
                                           (csexp/encode (seq ["master-key"
-                                                              (seq ["key-seed" (js/Uint8Array. (array-xor (:private new-key) pw-hash))])
-                                                              (seq ["salt" salt])
+                                                              (seq ["key-seed" key-seed])
                                                               (seq ["opslimit" (str opslimit)])
                                                               (seq ["memlimit" (str memlimit)])
-                                                              (seq ["public" (:public new-key)])]))))
-      new-key)))
+                                                              (seq ["public" (.-publicKey new-keypair)])]))))
+      {:public (.-publicKey new-keypair) :private (.-privateKey new-keypair)})))
 
 ; The master key is protected against device compromise by only storing a seed on disk.
 ; The final key should be extracted by combining the seed and a (slow, brute-force resistant)
@@ -53,17 +64,14 @@
               pw-hash (.crypto_pwhash sodium
                                       (.-crypto_box_PUBLICKEYBYTES sodium)
                                       user-pw
-                                      (:salt key-info)
+                                      (extract-salt (:key-seed key-info))
                                       (int (:opslimit key-info))
                                       (int (:memlimit key-info))
                                       (.-crypto_pwhash_ALG_DEFAULT sodium))
-              priv-key (js/Uint8Array. (array-xor (:key-seed key-info) pw-hash))]
-          ; test that we really got a working key pait
-          (if-let [checked-keypair (try
-                                     (.crypto_box_seal_open sodium (.crypto_box_seal sodium "test" (:public key-info)) (:public key-info) priv-key)
-                                     {:public (:public key-info) :private priv-key}
-                                     (catch js/Error))]
-            checked-keypair
+              keypair (.crypto_box_seed_keypair sodium (array-xor (:key-seed key-info) pw-hash))]
+          ; confirm that we really got the correct key pair
+          (if (= (vec (:public key-info)) (vec (.-publicKey keypair)))
+            {:public (.-publicKey keypair) :private (.-privateKey keypair)}
             (recur "Invalid password for master key, please try again"))))
       false)))
 

@@ -42,7 +42,7 @@
                           #(go
                              (if-let [result (<! (confirm-password-interactive-internal (.-password %2)))]
                                (>! c result)
-                               (get-password-interactive-internal false c)))
+                               (get-password-interactive-internal do-confirm c)))
                           #(go (>! c (.-password %2)))))
     c))
 
@@ -52,6 +52,18 @@
 (defn- create-password-interactive []
   (get-password-interactive-internal true (chan)))
 
+(defn- get-key-seed-interactive-internal [c]
+  (let [schema (clj->js {"properties" {"keyseed" {"description" "Key seed string (min. 50 characters, or empty for random seed)"}}})]
+    (.start prompt)
+    (.get prompt schema #(go
+                           (if (or (empty? (.-keyseed %2)) (>= (.-length (.-keyseed %2)) 50) )
+                             (>! c (.-keyseed %2))
+                             (get-key-seed-interactive-internal c))))
+    c))
+
+(defn- get-key-seed-interactive []
+  (get-key-seed-interactive-internal (chan)))
+
 (defn- get-or-create-master-key [password-from-args]
   (let [pw-getter (if password-from-args #(go password-from-args) get-password-interactive)]
     (go
@@ -59,7 +71,7 @@
         master-key
         (do
           (print "No master key detected, creating a new one.")
-          (<! (keystore/create-master-key {} create-password-interactive)))))))
+          (<! (keystore/create-master-key {} create-password-interactive get-key-seed-interactive)))))))
 
 (defn- validate-arg [key value args]
   (go
