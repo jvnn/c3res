@@ -18,7 +18,7 @@
   (async done
          (go
            (<! (sod/init))
-           (let [should-be-id (<! (cache/new-shard "foo" {"label1" "value1"} "text/plain" (chan 1) {:shard-cache-path (get-testpath)} (shards/generate-keys)))]
+           (let [should-be-id (<! (cache/new-shard (get-testpath) "foo" {"label1" "value1"} "text/plain" (chan 1) (shards/generate-keys)))]
              (is (some? should-be-id))
              (is (nil? (:error should-be-id))))
            (done))))
@@ -28,13 +28,13 @@
          (go
            (<! (sod/init))
            (let [keys (shards/generate-keys)
-                 opts {:shard-cache-path (get-testpath)}]
-             (is (some? (:error (<! (cache/new-shard "" {"label" "val"} "type" (chan 1) opts keys)))))
-             (is (some? (:error (<! (cache/new-shard "foo" {1 "val"} "type" (chan 1) opts keys)))))
-             (is (some? (:error (<! (cache/new-shard "foo" {"label" 4} "type" (chan 1) opts keys)))))
-             (is (some? (:error (<! (cache/new-shard "foo" ["label" "val"] "type" (chan 1) opts keys)))))
-             (is (some? (:error (<! (cache/new-shard "foo" {"label" "val"} "" (chan 1) opts keys)))))
-             (is (nil? (:error (<! (cache/new-shard "foo" {"label" "val"} "type" (chan 1) opts keys))))))
+                 testpath (get-testpath)]
+             (is (some? (:error (<! (cache/new-shard testpath "" {"label" "val"} "type" (chan 1) keys)))))
+             (is (some? (:error (<! (cache/new-shard testpath "foo" {1 "val"} "type" (chan 1) keys)))))
+             (is (some? (:error (<! (cache/new-shard testpath "foo" {"label" 4} "type" (chan 1) keys)))))
+             (is (some? (:error (<! (cache/new-shard testpath "foo" ["label" "val"] "type" (chan 1) keys)))))
+             (is (some? (:error (<! (cache/new-shard testpath "foo" {"label" "val"} "" (chan 1) keys)))))
+             (is (nil? (:error (<! (cache/new-shard testpath "foo" {"label" "val"} "type" (chan 1) keys))))))
            (done))))
 
 (deftest test-nonwriteable-dir
@@ -43,17 +43,16 @@
            (<! (sod/init))
            (let [testpath (str (get-testpath) "-ro")]
              (.mkdirSync fs testpath (clj->js {:mode 0400}))
-             (is (some? (:error (<! (cache/new-shard "foo" {"label" "val"} "type" (chan 1) {:shard-cache-path testpath} (shards/generate-keys))))))
+             (is (some? (:error (<! (cache/new-shard testpath "foo" {"label" "val"} "type" (chan 1) (shards/generate-keys))))))
              (done)))))
 
 (deftest test-cache-and-fetch
   (async done
          (go
            (<! (sod/init))
-           (let [opts {:shard-cache-path (get-testpath)}
-                 keys (shards/generate-keys)
-                 id (<! (cache/new-shard "foo" {"label1" "value1"} "text/plain" (chan 1) opts keys))
-                 shard (<! (cache/fetch id opts keys))]
+           (let [keys (shards/generate-keys)
+                 id (<! (cache/new-shard (get-testpath) "foo" {"label1" "value1"} "text/plain" (chan 1) keys))
+                 shard (<! (cache/fetch (get-testpath) id keys))]
              (is (= (:raw shard) "foo")))
            (done))))
 

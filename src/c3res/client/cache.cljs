@@ -6,7 +6,7 @@
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
 ; TODO: currently only supporting own keys, no targets
-(defn new-shard [content labels content-type upstream-chan custom-storage-opts my-keys]
+(defn new-shard [cache-path content labels content-type upstream-chan my-keys]
   (go
     (cond
       (not (map? labels))
@@ -19,15 +19,15 @@
       {:error "Invalid content: expecting a non-empty string or byte array"}
       :else
       (let [shard (shards/create-shard content labels content-type my-keys)]
-        (if-not (<! (storage/cache-shard shard custom-storage-opts))
+        (if-not (<! (storage/cache-shard cache-path shard))
           {:error "Failed to cache shard to storage"}
           (do
             (>! upstream-chan (:id shard))
             (:id shard)))))))
 
-(defn fetch [id custom-storage-opts my-keys]
+(defn fetch [cache-path id my-keys]
   (go
     ; TODO: replace nil here with a request to server 
-    (when-let [shard (or (<! (storage/get-from-cache id custom-storage-opts)) nil)]
+    (when-let [shard (or (<! (storage/get-from-cache cache-path id)) nil)]
       (shards/read-shard shard my-keys))))
 

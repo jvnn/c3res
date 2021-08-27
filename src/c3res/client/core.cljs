@@ -1,6 +1,7 @@
 (ns c3res.client.core
-  (:require [c3res.client.keystore :as keystore]
-            [c3res.client.cache :as cache]
+  (:require [c3res.client.cache :as cache]
+            [c3res.client.keystore :as keystore]
+            [c3res.client.options :as options]
             [c3res.client.sodiumhelper :as sod]
             [c3res.client.shards :as shards]
             [c3res.client.storage :as storage]
@@ -53,13 +54,14 @@
   (get-password-interactive-internal true (chan)))
 
 (defn- get-or-create-master-key [password-from-args]
-  (let [pw-getter (if password-from-args #(go password-from-args) get-password-interactive)]
+  (let [pw-getter (if password-from-args #(go password-from-args) get-password-interactive)
+        master-key-input-path (options/get-master-key-input-path {})]
     (go
-      (if-let [master-key (<! (keystore/get-master-key {} pw-getter))]
+      (if-let [master-key (<! (keystore/get-master-key master-key-input-path pw-getter))]
         master-key
         (do
           (print "No master key detected, creating a new one.")
-          (<! (keystore/create-master-key {} create-password-interactive)))))))
+          (<! (keystore/create-master-key master-key-input-path create-password-interactive)))))))
 
 (defn- validate-arg [key value args]
   (go
@@ -110,13 +112,14 @@
     (<! (sod/init))
     (go
       (when-let [args (<! (parse-args argv))]
-        (let [master-key (<! (get-or-create-master-key (:password args)))]
+        (let [master-key (<! (get-or-create-master-key (:password args)))
+              cache-path (options/get-shard-cache-path {})]
           (cond
             ; CONTINUE HERE:
             ;    - implement mime type support (check npm mime package)
             (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                     #(when-not %1 (go (print (<! (cache/new-shard %2 (get-labels args) "text/plain" (chan 1) {} master-key))))))
-            (:fetch args) (if-let [contents (<! (cache/fetch (:fetch args) {} master-key))]
+                                     #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 (get-labels args) "text/plain" (chan 1) master-key))))))
+            (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key))]
                             (shards/pretty-print contents)
                             (print "Could not find shard with id" (:fetch args)))
             (:server args) (.listen (.createServer http) 3000)))))))

@@ -42,7 +42,7 @@
 (defn- array-xor [x y]
   (js/Uint8Array. (map #(bit-xor (first %) (second %)) (partition 2 (interleave x y)))))
 
-(defn create-master-key [custom-storage-opts password-getter]
+(defn create-master-key [master-key-input-path password-getter]
   (go
     (let [opslimit (.-crypto_pwhash_OPSLIMIT_MODERATE sodium)
           memlimit (.-crypto_pwhash_MEMLIMIT_MODERATE sodium)
@@ -55,24 +55,24 @@
                                   (.-crypto_pwhash_ALG_DEFAULT sodium))
           new-key (shards/generate-keys)]
       ; XXX HANDLE ERROR CASE WHEN STORING
-      (<! (storage/store-master-key-input custom-storage-opts
-                                          (csexp/encode (seq ["master-key"
-                                                              (seq ["key-seed" (array-xor (:private new-key) pw-hash)])
-                                                              (seq ["salt" salt])
-                                                              (seq ["opslimit" (str opslimit)])
-                                                              (seq ["memlimit" (str memlimit)])
-                                                              (seq ["public" (:public new-key)])]))))
+      (<! (storage/store-file master-key-input-path
+                              (csexp/encode (seq ["master-key"
+                                                  (seq ["key-seed" (array-xor (:private new-key) pw-hash)])
+                                                  (seq ["salt" salt])
+                                                  (seq ["opslimit" (str opslimit)])
+                                                  (seq ["memlimit" (str memlimit)])
+                                                  (seq ["public" (:public new-key)])]))))
       new-key)))
 
 ; The master key is protected against device compromise by only storing a seed on disk.
 ; The final key should be extracted by combining the seed and a (slow, brute-force resistant)
 ; hash of the password. Eventually the password should be stored on a keyring for better
 ; usability.
-(defn get-master-key [custom-storage-opts password-getter]
+(defn get-master-key [master-key-input-path password-getter]
   (go-loop [msg "An existing master key file found, trying to extract keys..."]
-    (if-let [master-key-input (<! (storage/get-master-key-input custom-storage-opts))]
+    (if-let [master-key-input (<! (storage/get-file master-key-input-path))]
       (do
-        (when (not (s/blank? msg)) (print msg))
+        (print msg)
         (let [key-info (shards/csexp-to-map (csexp/decode master-key-input))
               user-pw (<! (password-getter))
               pw-hash (.crypto_pwhash sodium
