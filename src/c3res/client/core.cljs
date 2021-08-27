@@ -80,6 +80,10 @@
         (recur (rest option-keys)))
       args)))
 
+; TODO: some possible future commands:
+;   --backup-master-key: pretty-prints the master key data in a human-typeable format
+;   --restore-master-key: takes the above as a parameter to regenerate backed up key
+;   --change-master-key-password: allow changing the password of the master key seed 
 (defn- parse-args [argv]
   (go-loop [args {} current argv]
     (if (not current)
