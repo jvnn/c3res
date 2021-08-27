@@ -4,7 +4,7 @@
             [c3res.client.options :as options]
             [c3res.client.sodiumhelper :as sod]
             [c3res.client.shards :as shards]
-            [c3res.client.storage :as storage]
+            [c3res.shared.storage :as storage]
             [clojure.string :as s]
             [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [<! >! put! chan close!]])

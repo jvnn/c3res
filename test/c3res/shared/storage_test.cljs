@@ -1,6 +1,6 @@
-(ns c3res.client.storage-test
+(ns c3res.shared.storage-test
   (:require [c3res.client.options :as options]
-            [c3res.client.storage :as storage]
+            [c3res.shared.storage :as storage]
             [cljs.test :refer-macros [deftest is async]]
             [cljs.core.async :refer [<!]]
             [cljs.nodejs :as node])

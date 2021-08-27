@@ -1,6 +1,6 @@
 (ns c3res.client.cache
   (:require [c3res.client.shards :as shards]
-            [c3res.client.storage :as storage]
+            [c3res.shared.storage :as storage]
             [clojure.string :as s]
             [cljs.core.async :as async :refer [<! >!]])
   (:require-macros [cljs.core.async.macros :refer [go]]))

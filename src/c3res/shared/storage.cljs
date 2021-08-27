@@ -1,4 +1,4 @@
-(ns c3res.client.storage
+(ns c3res.shared.storage
   (:require [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [<! put! chan]])
   (:require-macros [cljs.core.async.macros :refer [go]])) 
