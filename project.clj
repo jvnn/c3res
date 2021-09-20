@@ -11,7 +11,9 @@
             [lein-cljsbuild "1.1.8"]]
   :npm
     {:dependencies
-     [[source-map-support "0.5.19"]
+     [[express "4.17.1"]
+      [cookie-parser "1.4.5"]
+      [source-map-support "0.5.19"]
       [libsodium-wrappers "0.7.9"]
       [prompt "1.1.0"]]}
 
@@ -24,9 +26,9 @@
          :compiler {:main c3res.server.core
                     :output-to "server_out/server.js"
                     :output-dir "server_out"
-                    :source-map "server_out/src-map"
+                    :source-map true ;"server_out/src-map"
                     :target :nodejs
-                    :optimizations :simple
+                    :optimizations :none
                     :verbose true}}
        :client
         {:source-paths ["src"]
