@@ -36,8 +36,7 @@
      (.join path cache-path id-start id)))
 
 (defn cache-shard [cache-path shard]
-  (let [c (chan)
-        cache-file (get-cache-filename cache-path (:id shard))]
+  (let [cache-file (get-cache-filename cache-path (:id shard))]
     (store-file cache-file (:data shard))))
 
 (defn get-from-cache [cache-path id]

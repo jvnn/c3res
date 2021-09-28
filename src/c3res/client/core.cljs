@@ -110,19 +110,18 @@
 (defn main [& argv]
   (go
     (<! (sod/init))
-    (go
-      (when-let [args (<! (parse-args argv))]
-        (let [master-key (<! (get-or-create-master-key (:password args)))
-              cache-path (options/get-shard-cache-path {})]
-          (cond
-            ; CONTINUE HERE:
-            ;    - implement mime type support (check npm mime package)
-            (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                     #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 (get-labels args) "text/plain" (chan 1) master-key))))))
-            (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key))]
-                            (shards/pretty-print contents)
-                            (print "Could not find shard with id" (:fetch args)))
-            (:server args) (.listen (.createServer http) 3000)))))))
+    (when-let [args (<! (parse-args argv))]
+      (let [master-key (<! (get-or-create-master-key (:password args)))
+            cache-path (options/get-shard-cache-path {})]
+        (cond
+          ; CONTINUE HERE:
+          ;    - implement mime type support (check npm mime package)
+          (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
+                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) (chan 2) master-key))))))
+          (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key))]
+                          (shards/pretty-print contents)
+                          (print "Could not find shard with id" (:fetch args)))
+          (:server args) (.listen (.createServer http) 3000))))))
 
 (set! *main-cli-fn* main)
 
