@@ -66,6 +66,25 @@
     (encode-internal sexp view (put-str view "(" 1 0))
     (js/Uint8Array. buf)))
 
+; -----------------------------------------------------------------------------
+
+(defn append [csexp toappend]
+  (let [isseq (seq? toappend)
+        newbuf (js/ArrayBuffer. (+ (.-length csexp) (if isseq (buf-size toappend) (get-length toappend))))
+        uint8buf (js/Uint8Array. newbuf)
+        view (js/DataView. newbuf)]
+    (.set uint8buf csexp)
+    ; overwrite the last ")" of the previous buffer (thus offset = old len - 1)
+    (if isseq
+      (do
+        (encode-internal toappend view (put-str view "(" 1 (- (.-length csexp) 1)))
+        ; reinsert the last ")" (done by encode-internal for non-seq values)
+        (put-str view ")" 1 (- (.-length uint8buf) 1))))
+      (encode-internal (seq [toappend]) view (- (.-length csexp) 1))
+    uint8buf))
+
+; -----------------------------------------------------------------------------
+
 (defn- get-int [string]
   (let [parsed (js/parseFloat string)]
     (if (integer? parsed) parsed nil)))
@@ -112,13 +131,6 @@
                 :else ; in well-formed csexp this has to be a length string
                 (recur :len remaining data))))))
 
-
-; some assumptions we need to make here:
-;   - the root sequence contains key-value pairs
-;   - each binary buffer is in its own sequence, marked internally with with atom "!bin"
-;   - NOTE: The latter is currently NOT enforced by the above encoding code,
-;     that should be refactored once the data format seems meaningful and stable enough
-;   - the above also means that we can interpret everything non-buffer as a string
 (defn decode [csexp]
   (seq (second (decode-internal csexp))))
 

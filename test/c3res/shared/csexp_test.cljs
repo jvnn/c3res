@@ -47,3 +47,12 @@
 (deftest test-utf8-decode
   (is (= (csexp/decode (js/Uint8Array. [40 51 58 226 130 172 41])) '("€"))))
 
+(deftest test-append
+  (let [csexp1 (csexp/encode '("foo" ("bar" "baz")))
+        csexp2 (csexp/append csexp1 '("ugh" ("agh")))
+        csexp3 (csexp/append csexp1 "notaseq")
+        csexp4 (csexp/append csexp1 (js/Uint8Array. (clj->js [35 33 33])))]
+    (is (= (buf-to-str csexp1) "(3:foo(3:bar3:baz))"))
+    (is (= (buf-to-str csexp2) "(3:foo(3:bar3:baz)(3:ugh(3:agh)))"))
+    (is (= (buf-to-str csexp3) "(3:foo(3:bar3:baz)7:notaseq)"))
+    (is (= (buf-to-str csexp4) "(3:foo(3:bar3:baz)(4:!bin3:#!!))"))))
