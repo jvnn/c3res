@@ -3,7 +3,7 @@
             [c3res.client.keystore :as keystore]
             [c3res.client.options :as options]
             [c3res.client.sodiumhelper :as sod]
-            [c3res.client.shards :as shards]
+            [c3res.shared.shards :as shards]
             [c3res.shared.storage :as storage]
             [clojure.string :as s]
             [cljs.nodejs :as node]

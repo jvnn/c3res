@@ -1,4 +1,4 @@
-(ns c3res.client.shards
+(ns c3res.shared.shards
   (:require [c3res.shared.csexp :as csexp]
             [c3res.client.sodiumhelper :as sod]
             [cljs.nodejs :as node]

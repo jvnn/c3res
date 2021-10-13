@@ -1,8 +1,8 @@
-(ns c3res.client.shards-test
+(ns c3res.shared.shards-test
   (:require [cljs.nodejs :as node]
             [cljs.test :refer-macros [deftest is async]]
             [clojure.string :as s]
-            [c3res.client.shards :as shards]
+            [c3res.shared.shards :as shards]
             [c3res.client.sodiumhelper :as sod]
             [cljs.core.async :as async :refer [<!]]) 
   (:require-macros [cljs.core.async.macros :refer [go]])) 

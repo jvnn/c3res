@@ -1,5 +1,5 @@
 (ns c3res.client.cache
-  (:require [c3res.client.shards :as shards]
+  (:require [c3res.shared.shards :as shards]
             [c3res.shared.storage :as storage]
             [clojure.string :as s]
             [cljs.core.async :as async :refer [<! >!]])

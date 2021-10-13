@@ -1,6 +1,6 @@
 (ns c3res.client.cache-test
   (:require [c3res.client.cache :as cache]
-            [c3res.client.shards :as shards]
+            [c3res.shared.shards :as shards]
             [c3res.client.sodiumhelper :as sod]
             [cljs.test :refer-macros [deftest is async]]
             [cljs.core.async :refer [<! chan]]
