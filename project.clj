@@ -13,6 +13,7 @@
     {:dependencies
      [[express "4.17.1"]
       [cookie-parser "1.4.5"]
+      [body-parser "1.19.0"]
       [source-map-support "0.5.19"]
       [libsodium-wrappers "0.7.9"]
       [prompt "1.1.0"]]}

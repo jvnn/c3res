@@ -7,7 +7,7 @@
 
 (defn- cache-single [shard cache-path upstream-chan]
   (go
-    (if-not (<! (storage/cache-shard cache-path shard))
+    (if-not (<! (storage/store-shard cache-path shard))
       false
       (do
         (>! upstream-chan (:id shard))
@@ -36,6 +36,6 @@
 (defn fetch [cache-path id my-keys]
   (go
     ; TODO: replace nil here with a request to server 
-    (when-let [shard (or (<! (storage/get-from-cache cache-path id)) nil)]
+    (when-let [shard (or (<! (storage/get-shard cache-path id)) nil)]
       (shards/read-shard shard my-keys))))
 

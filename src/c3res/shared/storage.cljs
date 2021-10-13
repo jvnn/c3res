@@ -35,11 +35,11 @@
    (let [id-start (subs id 0 2)]
      (.join path cache-path id-start id)))
 
-(defn cache-shard [cache-path shard]
+(defn store-shard [cache-path shard]
   (let [cache-file (get-cache-filename cache-path (:id shard))]
     (store-file cache-file (:data shard))))
 
-(defn get-from-cache [cache-path id]
+(defn get-shard [cache-path id]
   (let [filepath (get-cache-filename cache-path id)
         c (chan)]
     (get-file filepath)))
