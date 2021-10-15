@@ -68,6 +68,7 @@
 
 ; -----------------------------------------------------------------------------
 
+; Append a seq or a single value (string / buffer) to the end of an existing csexp
 (defn append [csexp toappend]
   (let [isseq (seq? toappend)
         newbuf (js/ArrayBuffer. (+ (.-length csexp) (if isseq (buf-size toappend) (get-length toappend))))
@@ -81,6 +82,18 @@
         ; reinsert the last ")" (done by encode-internal for non-seq values)
         (put-str view ")" 1 (- (.-length uint8buf) 1))))
       (encode-internal (seq [toappend]) view (- (.-length csexp) 1))
+    uint8buf))
+
+; Wrap an existing encoded csexp to another layer: (wrap (encode '("bar") "foo") --> ("foo" ("bar"))
+; (Can't use append here as that would treat the existing csexp as a buffer and add the !bin handling to it)
+(defn wrap [csexp wrapper-value]
+  (let [wrapper-val-len (get-length wrapper-value)
+        newbuf (js/ArrayBuffer. (+ (.-length csexp) wrapper-val-len 2)) ; 2 for "(" and ")"
+        uint8buf (js/Uint8Array. newbuf)
+        view (js/DataView. newbuf)]
+    (encode-internal (seq [wrapper-value]) view (put-str view "(" 1 0))
+    (.set uint8buf csexp (+ wrapper-val-len 1))
+    (put-str view ")" 1 (- (.-length uint8buf) 1))
     uint8buf))
 
 ; -----------------------------------------------------------------------------

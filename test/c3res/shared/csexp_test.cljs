@@ -51,8 +51,17 @@
   (let [csexp1 (csexp/encode '("foo" ("bar" "baz")))
         csexp2 (csexp/append csexp1 '("ugh" ("agh")))
         csexp3 (csexp/append csexp1 "notaseq")
-        csexp4 (csexp/append csexp1 (js/Uint8Array. (clj->js [35 33 33])))]
+        csexp4 (csexp/append csexp1 (js/Uint8Array. [35 33 33]))]
     (is (= (buf-to-str csexp1) "(3:foo(3:bar3:baz))"))
     (is (= (buf-to-str csexp2) "(3:foo(3:bar3:baz)(3:ugh(3:agh)))"))
     (is (= (buf-to-str csexp3) "(3:foo(3:bar3:baz)7:notaseq)"))
     (is (= (buf-to-str csexp4) "(3:foo(3:bar3:baz)(4:!bin3:#!!))"))))
+
+(deftest test-wrap
+  (let [csexp1 (csexp/encode '("foo"))
+        csexp2 (csexp/wrap csexp1 "bar")
+        csexp3 (csexp/wrap csexp2 (js/Uint8Array. [98 97 122]))]
+    (is (= (buf-to-str csexp1) "(3:foo)"))
+    (is (= (buf-to-str csexp2) "(3:bar(3:foo))"))
+    (is (= (buf-to-str csexp3) "((4:!bin3:baz)(3:bar(3:foo)))"))))
+
