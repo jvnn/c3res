@@ -126,7 +126,20 @@
           [(nthnext start datalen) uint8buf] ; drop the "!bin" marker
           [(nthnext start datalen) (conj data (.decode (TextDecoder.) uint8buf))])))))
 
-(defn- decode-internal [csexp]
+(defn- slurp-subseq [input]
+  (loop [remaining input parens 0 len 1] ; len == how many characters have been checked _including_ current
+    (when-let [current (as-char (first remaining))]
+      (cond
+        (= current "(")
+        (recur (rest remaining) (inc parens) (inc len))
+        (= current ")")
+        (if (= parens 1)
+          [(nthnext input len) (js/Uint8Array. (map as-number (take len input)))]
+          (recur (rest remaining) (dec parens) (inc len)))
+        :else
+        (recur (rest remaining) parens (inc len))))))
+
+(defn- decode-internal [csexp single-layer]
   (loop [state :start remaining csexp data []]
     (when-let [current (as-char (first remaining))]
       (case state
@@ -134,16 +147,27 @@
         :len (let [[newremaining newdata] (decode-single remaining data)] (recur :next newremaining newdata))
         :next (cond
                 (= current "(")
-                (let [[newremaining newdata] (decode-internal remaining)] (recur :next newremaining
-                                                                                 ; check for single binary buffer (decoded from "!bin" entry), and don't seq it
-                                                                                 (conj data (if (instance? js/Uint8Array newdata)
-                                                                                              newdata
-                                                                                              (seq newdata)))))
+                (if single-layer
+                  (let [[newremaining subseq-buffer] (slurp-subseq remaining)] (recur :next newremaining (conj data subseq-buffer)))
+                  (let [[newremaining newdata] (decode-internal remaining false)]
+                    (recur :next newremaining
+                           ; check for single binary buffer (decoded from "!bin" entry), and don't seq it
+                           (conj data (if (instance? js/Uint8Array newdata)
+                                        newdata
+                                        (seq newdata))))))
                 (= current ")")
                 [(rest remaining) data]
                 :else ; in well-formed csexp this has to be a length string
                 (recur :len remaining data))))))
 
 (defn decode [csexp]
-  (seq (second (decode-internal csexp))))
+  (seq (second (decode-internal csexp false))))
+
+; -----------------------------------------------------------------------------
+
+; split the topmost layer of this csexp into individual components, leave subseqs undecoded:
+; (decode-single-layer (encode '("foo" ("bar" "baz") "boom"))) --> ("foo" #js/Uint8Array[(3:bar3:baz)] "boom")
+;   --> note how leaf values are fully decoded, but nested sequences are left in their encoded form
+(defn decode-single-layer [csexp]
+  (seq (second (decode-internal csexp true))))
 
