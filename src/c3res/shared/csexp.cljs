@@ -51,9 +51,7 @@
   (if (seq? element)
     (reduce #(+ %1 (get-length %2)) 2 element) ; 2 for "(" and ")"
     (let [isbuffer (instance? js/Uint8Array element)
-          element-len (cond
-                        (string? element) (str-len element)
-                        isbuffer (.-length element))
+          element-len (if isbuffer (.-length element) (str-len element))
           lenstrlen (count (str element-len))]
       (+ element-len lenstrlen 1 (if isbuffer 8 0))))) ; +1 for colon, +8 for "(4:!bin" and ")" 
 
@@ -112,16 +110,20 @@
     element
     (.charCodeAt element 0)))
 
+(defn- get-len-and-start [data]
+  (let [len-string (take-while #(get-int (as-char %)) data)
+        datalen (get-int (s/join (map as-char len-string)))
+        stringlen (count len-string)
+        nextchar (as-char (nth data stringlen))
+        start (nthnext data (+ stringlen 1))]
+    ; sanity check: make sure the character after length is ":"
+    (when (= nextchar ":") [datalen start stringlen])))
+
 (defn- decode-single [remaining data]
   (when (get-int (as-char (first remaining)))
-    (let [len-string (take-while #(get-int (as-char %)) remaining)
-          datalen (get-int (s/join (map as-char len-string)))
-          stringlen (count len-string)
-          nextchar (as-char (nth remaining stringlen))
-          start (nthnext remaining (+ stringlen 1))
-          uint8buf (js/Uint8Array. (map as-number (take datalen start)))
-          isbuffer (and (= (count data) 1) (= (first data) "!bin"))]
-      (when (= nextchar ":")
+    (when-let [[datalen start _] (get-len-and-start remaining)]
+      (let [uint8buf (js/Uint8Array. (map as-number (take datalen start)))
+            isbuffer (and (= (count data) 1) (= (first data) "!bin"))]
         (if isbuffer
           [(nthnext start datalen) uint8buf] ; drop the "!bin" marker
           [(nthnext start datalen) (conj data (.decode (TextDecoder.) uint8buf))])))))
@@ -137,7 +139,8 @@
           [(nthnext input len) (js/Uint8Array. (map as-number (take len input)))]
           (recur (rest remaining) (dec parens) (inc len)))
         :else
-        (recur (rest remaining) parens (inc len))))))
+        (when-let [[datalen start stringlen] (get-len-and-start remaining)]
+          (recur (nthnext start datalen) parens (+ len datalen stringlen 1)))))))
 
 (defn- decode-internal [csexp single-layer]
   (loop [state :start remaining csexp data []]
@@ -162,8 +165,6 @@
 
 (defn decode [csexp]
   (seq (second (decode-internal csexp false))))
-
-; -----------------------------------------------------------------------------
 
 ; split the topmost layer of this csexp into individual components, leave subseqs undecoded:
 ; (decode-single-layer (encode '("foo" ("bar" "baz") "boom"))) --> ("foo" #js/Uint8Array[(3:bar3:baz)] "boom")

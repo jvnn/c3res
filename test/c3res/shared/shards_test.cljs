@@ -12,9 +12,9 @@
     (go
       (<! (sod/init))
       (let [keypair (shards/generate-keys)
-            with-metadata (shards/create-with-metadata "foo" "text/plain" {"label1" "value1" "label2" "value2"} keypair)
-            metadata (shards/read-shard (:data (:metadata with-metadata)) keypair)
-            contents (shards/read-shard (:data (:shard with-metadata)) keypair)]
+            with-metadata (shards/create-with-metadata "foo" "text/plain" {"label1" "value1" "label2" "value2"} keypair keypair)
+            metadata (shards/read-shard (:id (:metadata with-metadata)) (:data (:metadata with-metadata)) keypair)
+            contents (shards/read-shard (:id (:shard with-metadata)) (:data (:shard with-metadata)) keypair)]
         (is (= (:raw contents) "foo"))
         (is (= (:labels (:metadata metadata)) {"label1" "value1" "label2" "value2"}))
         (done)))))

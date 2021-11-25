@@ -66,10 +66,10 @@
     (is (= (buf-to-str csexp3) "((4:!bin3:baz)(3:bar(3:foo)))"))))
 
 (deftest test-decode-single-layer
-  (let [test-csexp (csexp/encode '("foo" ("bar" "baz") "boom"))
+  (let [test-csexp (csexp/encode '("foo" ("bar" ("1") "(baz") "boom"))
         parts (csexp/decode-single-layer test-csexp)]
     (is (= (count parts) 3))
     (is (= (first parts) "foo"))
-    (is (= (buf-to-str (second parts)) "(3:bar3:baz)"))
+    (is (= (buf-to-str (second parts)) "(3:bar(1:1)4:(baz)"))
     (is (= (nth parts 2) "boom"))))
 

@@ -26,7 +26,7 @@
       (or (s/blank? content) (empty? content))
       {:error "Invalid content: expecting a non-empty string or byte array"}
       :else
-      (let [shard-and-metadata (shards/create-with-metadata content content-type labels my-keys)
+      (let [shard-and-metadata (shards/create-with-metadata content content-type labels my-keys my-keys)
             shard-id (<! (cache-single (:shard shard-and-metadata) cache-path upstream-chan))
             metadata-id (<! (cache-single (:metadata shard-and-metadata) cache-path upstream-chan))]
         (if (and shard-id metadata-id)
@@ -37,5 +37,8 @@
   (go
     ; TODO: replace nil here with a request to server 
     (when-let [shard (or (<! (storage/get-shard cache-path id)) nil)]
-      (shards/read-shard shard my-keys))))
+      (let [shard-map (shards/read-shard id shard my-keys)]
+        (if (:error shard-map)
+          (print "Failed to retrieve a shard: " (:error shard-map))
+          shard-map)))))
 
