@@ -1,4 +1,4 @@
-(ns c3res.client.sodiumhelper
+(ns c3res.shared.sodiumhelper
   (:require [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [chan close!]]))
 

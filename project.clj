@@ -23,7 +23,7 @@
   :cljsbuild
     {:builds
       {:server
-        {:source-paths ["src"]
+        {:source-paths ["src/c3res/shared" "src/c3res/server"]
          :compiler {:main c3res.server.core
                     :output-to "server_out/server.js"
                     :output-dir "server_out"
@@ -32,7 +32,7 @@
                     :optimizations :none
                     :verbose true}}
        :client
-        {:source-paths ["src"]
+        {:source-paths ["src/c3res/shared" "src/c3res/client"]
          :compiler {:main c3res.client.core
                     :output-to "client_out/client.js"
                     :output-dir "client_out"

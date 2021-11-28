@@ -1,7 +1,7 @@
 (ns c3res.client.keystore-test
   (:require [c3res.client.keystore :as keystore]
             [c3res.client.options :as options]
-            [c3res.client.sodiumhelper :as sod]
+            [c3res.shared.sodiumhelper :as sod]
             [cljs.test :refer-macros [deftest is async]]
             [cljs.core.async :refer [<!]]
             [cljs.nodejs :as node])

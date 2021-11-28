@@ -44,7 +44,7 @@
 
 (ns c3res.client.keystore
   (:require [c3res.shared.shards :as shards]
-            [c3res.client.sodiumhelper :as sod]
+            [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.csexp :as csexp]
             [c3res.shared.storage :as storage]
             [clojure.string :as s]

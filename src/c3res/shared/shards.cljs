@@ -1,6 +1,6 @@
 (ns c3res.shared.shards
   (:require [c3res.shared.csexp :as csexp]
-            [c3res.client.sodiumhelper :as sod]
+            [c3res.shared.sodiumhelper :as sod]
             [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [chan close!]]))
 

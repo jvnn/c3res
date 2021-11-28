@@ -2,7 +2,7 @@
   (:require [c3res.client.cache :as cache]
             [c3res.client.keystore :as keystore]
             [c3res.client.options :as options]
-            [c3res.client.sodiumhelper :as sod]
+            [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.shards :as shards]
             [c3res.shared.storage :as storage]
             [clojure.string :as s]
@@ -73,7 +73,9 @@
       :fetch (if-not (re-matches #"[0-9a-f]{64}" value) (print "Invalid id hash") true)
       :server (if (some #(contains? args %) [:store :fetch]) (print "Cannot use --server together with --store / --fetch") true)
       :daemon (if (or (nil? (:server args)) (some #(contains? args %) [:store :fetch]))
-                (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false)))))
+                (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false))
+      :print-master-key (if-not (reduce #(and %1 (contains? #{:password :print-master-key} %2)) true (keys args))
+                          (print "Only --password is allowed together with --print-master-key") true))))
 
 (defn- validate-args [args]
   (go-loop [option-keys (keys args)]
@@ -83,7 +85,6 @@
       args)))
 
 ; TODO: some possible future commands:
-;   --backup-master-key: pretty-prints the master key data in a human-typeable format
 ;   --restore-master-key: takes the above as a parameter to regenerate backed up key
 ;   --change-master-key-password: allow changing the password of the master key seed 
 (defn- parse-args [argv]
@@ -97,6 +98,7 @@
         "--fetch" (recur (assoc args :fetch (second current)) (nnext current))
         "--server" (recur (assoc args :server true) (next current))
         "--daemon" (recur (assoc args :daemon true) (next current))
+        "--print-master-key" (recur (assoc args :print-master-key true) (next current))
         (do (print "Invalid argument" (first current)) (.exit process 1))))))
 
 (defn- get-labels [args]
@@ -112,8 +114,10 @@
     (<! (sod/init))
     (when-let [args (<! (parse-args argv))]
       (let [master-key (<! (get-or-create-master-key (:password args)))
-            cache-path (options/get-shard-cache-path {})]
+            cache-path (options/get-shard-cache-path {})
+            sodium (sod/get-sodium)]
         (cond
+          (:print-master-key args) (print "public: " (.to_hex sodium (:sign-public master-key)) "\nprivate: " (.to_hex sodium (:sign-private master-key)))
           ; CONTINUE HERE:
           ;    - implement mime type support (check npm mime package)
           (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
