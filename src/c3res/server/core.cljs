@@ -1,5 +1,6 @@
 (ns c3res.server.core
-  (:require [c3res.shared.shards :as shards]
+  (:require [c3res.server.db :as db]
+            [c3res.shared.shards :as shards]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.storage :as storage]
             [cljs.nodejs :as node]
@@ -10,7 +11,10 @@
 
 (node/enable-util-print!)
 
+(def fs (node/require "fs"))
+(def path (node/require "path"))
 (def process (node/require "process"))
+
 (def express (node/require "express"))
 (def body-parser (node/require "body-parser"))
 (def cookie-parser (node/require "cookie-parser"))
@@ -43,7 +47,7 @@
   (case key
     :owner (if-not (and (string? value) (re-matches #"^[0-9a-z]{64}$" value)) (print "Invalid owner key format") true)
     :daemon (do (print "Daemon mode not yet implemented...") false)
-    :db-root true))
+    :db-root (try (.accessSync fs value) true (catch js/Error _ (print "Invalid db root path")))))
 
 (defn- validate-args [args]
   (let [required #{:owner :db-root}
@@ -71,7 +75,8 @@
 (defn -main [& argv]
   (go
     (<! (sod/init))
-    (let [args (parse-args argv)]
+    (let [args (parse-args argv)
+          db (db/open-db (.join path (:db-root args) (str (:owner args) ".db")))]
       (let [app (express)
             allowed_authors #{(:owner args)}]
         (.get app "/" (fn [req res] (.send res "Hello C3RES!")))
