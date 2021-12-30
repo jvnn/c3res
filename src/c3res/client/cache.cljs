@@ -26,7 +26,7 @@
       (or (s/blank? content) (empty? content))
       {:error "Invalid content: expecting a non-empty string or byte array"}
       :else
-      (let [shard-and-metadata (shards/create-with-metadata content content-type labels my-keys my-keys)
+      (let [shard-and-metadata (shards/create-with-metadata content content-type labels my-keys my-keys [])
             shard-id (<! (cache-single (:shard shard-and-metadata) cache-path upstream-chan))
             metadata-id (<! (cache-single (:metadata shard-and-metadata) cache-path upstream-chan))]
         (if (and shard-id metadata-id)

@@ -17,31 +17,45 @@
 (defn csexp-to-map [csexp]
   (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} (rest csexp)))
 
+(defn create-cap [stream-key target-pubkey]
+  (let [keylen (.-length stream-key)
+        random (.randombytes_buf sodium keylen)
+        newbuf (js/Uint8Array. (* keylen 2))]
+    (.set newbuf stream-key)
+    (.set newbuf random keylen)
+    (.crypto_box_seal sodium newbuf target-pubkey)))
+
 ; shard stucture:
 ;   (shard-id ("shard" ("author" ...) ("rootcap" ...) ("nonce" ...)
 ;                      ("encrypted" ("data" ("type" ...) ("raw" ...))))
 ;             ("signature" ...) ("caps" ...))
-(defn create-shard [data contenttype root-keypair author-keypair]
+(defn create-shard [data contenttype root-keypair author-keypair cap-keys]
   (let [stream-key (.crypto_secretbox_keygen sodium)
         author (.to_hex sodium (:sign-public author-keypair))
         nonce (.randombytes_buf sodium (.-crypto_secretbox_NONCEBYTES sodium))
         contents (seq ["data" (seq ["type" contenttype]) (seq ["raw" data])])
         box (.crypto_secretbox_easy sodium (csexp/encode contents) nonce stream-key)
-        ; TODO: Add random bytes to author-cap's input to prevent recipients from knowing if this cap is for the stated "author" of this shard
-        root-cap (.crypto_box_seal sodium stream-key (:enc-public root-keypair))
+        root-cap (create-cap stream-key (:enc-public root-keypair))
         shard (csexp/encode (seq ["shard" (seq ["author" author]) (seq ["rootcap" root-cap]) (seq ["nonce" nonce]) (seq ["encrypted" box])]))
         shard-id (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard)
         shard-id-str (.to_hex sodium shard-id)
         signature (.crypto_sign_detached sodium shard-id-str (:sign-private author-keypair))
-        envelope (csexp/wrap shard shard-id-str)]
-    {:id shard-id-str :data (csexp/append envelope (seq ["signature" signature]))}))
+        caps (for [pubkey cap-keys] (create-cap stream-key pubkey))
+        envelope (-> shard
+                     (csexp/wrap shard-id-str)
+                     (csexp/append (seq ["signature" signature])))]
+    {:id shard-id-str :data (if (seq caps) (csexp/append envelope (seq ["caps" caps])) envelope)}))
+
+; TODO: To get this whole metadata stuff working...
+;   - move keystore to shared: the server will also need a key to be able to open metadata shards (and not just on updload)
+;   - add server pubkey into cmd line arguments (for now), and pass it below to use as a cap for metadata
 
 ; the main shard only contains the data and data type - everything else is in the metadata shard
-(defn create-with-metadata [contents contenttype labels root-keypair author-keypair]
+(defn create-with-metadata [contents contenttype labels root-keypair author-keypair cap-keys]
   (let [keyvaluelabels (map seq (seq labels)) ; first seq converts a map to sequence of vectors
         metadata (seq ["metadata" (seq ["timestamp" (str (.now js/Date))]) (seq ["labels" (conj keyvaluelabels "map")])])]
-    {:shard (create-shard contents contenttype root-keypair author-keypair)
-     :metadata (create-shard metadata "c3res/metadata" root-keypair author-keypair)}))
+    {:shard (create-shard contents contenttype root-keypair author-keypair cap-keys)
+     :metadata (create-shard metadata "c3res/metadata" root-keypair author-keypair [])}))
 
 (defn validate-shard [id full-shard]
   (if-let [root-parts (csexp/decode-single-layer full-shard)]
@@ -63,7 +77,8 @@
   (let [shard-map (validate-shard id full-shard)]
     (if (:error shard-map)
       shard-map ; propagate error to caller
-      (let [stream-key (.crypto_box_seal_open sodium (:rootcap shard-map) (:enc-public my-keypair) (:enc-private my-keypair))
+      (let [stream-key-and-random (.crypto_box_seal_open sodium (:rootcap shard-map) (:enc-public my-keypair) (:enc-private my-keypair))
+            stream-key (.slice stream-key-and-random 0 (/ (.-length stream-key-and-random) 2))
             plaintext (.crypto_secretbox_open_easy sodium (:encrypted shard-map) (:nonce shard-map) stream-key)
             shard-as-map (csexp-to-map (csexp/decode plaintext))]
         (if (= (:type shard-as-map) "c3res/metadata")
