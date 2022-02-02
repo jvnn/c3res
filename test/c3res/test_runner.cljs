@@ -4,8 +4,8 @@
             [c3res.shared.csexp-test]
             [c3res.shared.storage-test]
             [c3res.shared.shards-test]
-            [c3res.client.cache-test]
-            [c3res.client.keystore-test]))
+            [c3res.shared.keystore-test]
+            [c3res.client.cache-test]))
 
 (node/enable-util-print!)
 
@@ -14,7 +14,7 @@
   (test/run-tests 'c3res.shared.csexp-test)
   (test/run-tests 'c3res.shared.storage-test)
   (test/run-tests 'c3res.shared.shards-test)
-  (test/run-tests 'c3res.client.cache-test)
-  (test/run-tests 'c3res.client.keystore-test)) 
+  (test/run-tests 'c3res.shared.keystore-test)
+  (test/run-tests 'c3res.client.cache-test))
 
 (set! *main-cli-fn* run-them-tests)

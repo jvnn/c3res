@@ -1,7 +1,7 @@
 (ns c3res.client.core
   (:require [c3res.client.cache :as cache]
-            [c3res.client.keystore :as keystore]
             [c3res.client.options :as options]
+            [c3res.shared.keystore :as keystore]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.shards :as shards]
             [c3res.shared.storage :as storage]

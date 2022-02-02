@@ -1,14 +1,14 @@
 ; Some design considerations:
 ;
-; There are problems in both, using either a fully random or
-; generated-from-human-readable string seeds.  Fully random is harder to
-; transfer between devices without copying, but it "guarantees" no collisions
-; and is impossible for someone to guess. It's also not as easy to back up
-; using analog means.  A seed generated from a user-provided string might
-; "easily" collide if two different people, without knowing each other, just
-; love the same long sentence of their favourite book. Someone might also be
-; able to guess the seed. On the other hand moving between devices and backing
-; up (e.g. by simply marking down some pages in a book) would be simpler.
+; There are problems with both, using either a fully random or
+; generated-from-human-readable string seeds.  A fully random seed is harder to
+; transfer between e.g. air-gapped devices and is not easy to back up using
+; analog means, but it "guarantees" no collisions and is impossible for someone
+; to guess. A seed generated from a user-provided string might "easily" collide
+; if two different people, without knowing each other, just love the same long
+; sentence of their favourite book. Someone might also be able to guess the
+; seed. On the other hand moving between devices and backing up (e.g. by simply
+; marking down some pages in a book) would be simpler.
 ;
 ; But especially considering the much shorter key sizes of elliptic curve based
 ; algorithms, even backing up and restoring (or copying between devices) of
@@ -25,16 +25,16 @@
 ; there is that we can no longer change the password, e.g. in case it might
 ; have been compromized. Thus we should first generate the key and then xor it
 ; with the password hash to generate the key seed stored on disk. Then one can
-; retrieve the key with the old password and restore it with a new one. Or one
-; can use device-specific passwords for the key storage.
+; retrieve the key with the old password and write it back with a new one. Or
+; one can use device-specific passwords for key storage.
 ;
 ; Also, as crypto boxes and elliptic curve signing algorithms use different
 ; types of keys, we actually need two sets of keys to encrypt capabilities and
 ; to sign shards. There are basically two alternatives: either to concatenate
 ; the public keys to a single "public" key (to be used as the identity) or to
 ; use the signing keys as identity and calculate the box encryption keys from
-; them (it's only possible that direction). To keep the identity key size as
-; small as possible, the latter option got chosen.
+; them (it's only possible in that direction). To keep the identity key size as
+; small as possible, the latter option was chosen.
 
 ; TODO:
 ;   - store group memberships (should be stored as a shard)
@@ -42,7 +42,7 @@
 ;     - ... thus the memberships can be shared by devices by sharing the shard like any other
 ;   - store individual identities (additional key pairs) again as a shard for the above reasons
 
-(ns c3res.client.keystore
+(ns c3res.shared.keystore
   (:require [c3res.shared.shards :as shards]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.csexp :as csexp]

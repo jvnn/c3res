@@ -1,6 +1,5 @@
-(ns c3res.client.keystore-test
-  (:require [c3res.client.keystore :as keystore]
-            [c3res.client.options :as options]
+(ns c3res.shared.keystore-test
+  (:require [c3res.shared.keystore :as keystore]
             [c3res.shared.sodiumhelper :as sod]
             [cljs.test :refer-macros [deftest is async]]
             [cljs.core.async :refer [<!]]
@@ -19,14 +18,12 @@
 
 (deftest test-create-and-retrieve-master-key
   (let [testfile (get-testfile)
-        opts {:master-key-path testfile}
-        master-key-input-path (options/get-master-key-input-path opts)
-        ]
+        opts {:master-key-path testfile}]
     (async done
            (go
              (<! (sod/init))
-             (let [new-key (<! (keystore/create-master-key master-key-input-path pw-getter))
-                   retrieved-key (<! (keystore/get-master-key master-key-input-path pw-getter))]
+             (let [new-key (<! (keystore/create-master-key testfile pw-getter))
+                   retrieved-key (<! (keystore/get-master-key testfile pw-getter))]
                (is (= (vec (:public new-key)) (vec (:public retrieved-key))))
                (is (= (vec (:private new-key)) (vec (:private retrieved-key)))))
              (done)))))

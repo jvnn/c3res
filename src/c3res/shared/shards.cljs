@@ -47,7 +47,6 @@
     {:id shard-id-str :data (if (seq caps) (csexp/append envelope (seq ["caps" caps])) envelope)}))
 
 ; TODO: To get this whole metadata stuff working...
-;   - move keystore to shared: the server will also need a key to be able to open metadata shards (and not just on updload)
 ;   - add server pubkey into cmd line arguments (for now), and pass it below to use as a cap for metadata
 
 ; the main shard only contains the data and data type - everything else is in the metadata shard
