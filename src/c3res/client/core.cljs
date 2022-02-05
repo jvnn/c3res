@@ -1,6 +1,5 @@
 (ns c3res.client.core
   (:require [c3res.client.cache :as cache]
-            [c3res.client.options :as options]
             [c3res.shared.keystore :as keystore]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.shards :as shards]
@@ -16,8 +15,18 @@
 
 (def fs (node/require "fs"))
 (def http (node/require "http"))
+(def os (node/require "os"))
 (def path (node/require "path"))
 (def process (node/require "process"))
+
+(defn- get-config-dir [args]
+  (or (:config-dir args) (.join path (.homedir os) ".c3res")))
+
+(defn- get-master-key-input-path [args]
+  (.join path (get-config-dir args) "master-key-input"))
+
+(defn- get-shard-cache-path [args]
+  (.join path (get-config-dir args) "cache"))
 
 (defn- confirm-password-interactive-internal [to-confirm]
   (let [c (chan)
@@ -53,19 +62,25 @@
 (defn- create-password-interactive []
   (get-password-interactive-internal true (chan)))
 
-(defn- get-or-create-master-key [password-from-args]
-  (let [pw-getter (if password-from-args #(go password-from-args) get-password-interactive)
-        master-key-input-path (options/get-master-key-input-path {})]
-    (go
-      (if-let [master-key (<! (keystore/get-master-key master-key-input-path pw-getter))]
-        master-key
-        (do
-          (print "No master key detected, creating a new one.")
-          (<! (keystore/create-master-key master-key-input-path create-password-interactive)))))))
+(defn- get-or-create-master-key [args]
+  (let [pw-getter (if (:password args) #(go (:password args)) get-password-interactive)
+        master-key-input-path (get-master-key-input-path args)]
+    (go-loop []
+      (let [master-key (<! (keystore/get-master-key master-key-input-path pw-getter))]
+        (if (:error master-key)
+          (case (:error master-key)
+            :password (if (= pw-getter get-password-interactive)
+                        (do (print "Invalid password, please try again.") (recur))
+                        (do (print "Invalid password - terminating") (.exit process 1)))
+            :nokey (do
+                     (print "No master key detected, creating a new one.")
+                     (<! (keystore/create-master-key master-key-input-path create-password-interactive))))
+          master-key)))))
 
 (defn- validate-arg [key value args]
   (go
     (case key
+      :config-dir (if-not (<! (storage/ensure-dir value 0750)) (print (str "Invalid config directory '" value "' given")) true)
       :password (if (s/blank? value) (print "Invalid or missing password") true)
       :store (if-not (<! (storage/file-accessible value)) (print (str "Cannot find or access file '" value "' to store")) true)
       :labels (if (or (nil? (:store args)) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
@@ -74,7 +89,7 @@
       :server (if (some #(contains? args %) [:store :fetch]) (print "Cannot use --server together with --store / --fetch") true)
       :daemon (if (or (nil? (:server args)) (some #(contains? args %) [:store :fetch]))
                 (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false))
-      :print-master-key (if-not (reduce #(and %1 (contains? #{:password :print-master-key} %2)) true (keys args))
+      :print-master-key (if-not (reduce #(and %1 (contains? #{:password :print-master-key :config-dir} %2)) true (keys args))
                           (print "Only --password is allowed together with --print-master-key") true))))
 
 (defn- validate-args [args]
@@ -92,6 +107,7 @@
     (if (not current)
       (<! (validate-args args))
       (case (first current)
+        "--config-dir" (recur (assoc args :config-dir (second current)) (nnext current))
         "--password" (recur (assoc args :password (second current)) (nnext current))
         "--store" (recur (assoc args :store (second current)) (nnext current))
         "--label" (recur (assoc args :labels (conj (or (:labels args) []) (second current))) (nnext current))
@@ -113,8 +129,8 @@
   (go
     (<! (sod/init))
     (when-let [args (<! (parse-args argv))]
-      (let [master-key (<! (get-or-create-master-key (:password args)))
-            cache-path (options/get-shard-cache-path {})
+      (let [master-key (<! (get-or-create-master-key args))
+            cache-path (get-shard-cache-path args)
             sodium (sod/get-sodium)]
         (cond
           (:print-master-key args) (print "public: " (.to_hex sodium (:sign-public master-key)) "\nprivate: " (.to_hex sodium (:sign-private master-key)))

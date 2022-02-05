@@ -16,9 +16,11 @@
 (defn- pw-getter []
   (go "foobar"))
 
+(defn- wrong-pw-getter []
+  (go "barfoo"))
+
 (deftest test-create-and-retrieve-master-key
-  (let [testfile (get-testfile)
-        opts {:master-key-path testfile}]
+  (let [testfile (get-testfile)]
     (async done
            (go
              (<! (sod/init))
@@ -26,4 +28,14 @@
                    retrieved-key (<! (keystore/get-master-key testfile pw-getter))]
                (is (= (vec (:public new-key)) (vec (:public retrieved-key))))
                (is (= (vec (:private new-key)) (vec (:private retrieved-key)))))
+             (done)))))
+
+(deftest test-retrieve-with-wrong-password-fails
+  (let [testfile (get-testfile)]
+    (async done
+           (go
+             (<! (sod/init))
+             (let [new-key (<! (keystore/create-master-key testfile pw-getter))
+                   retrieved-key (<! (keystore/get-master-key testfile wrong-pw-getter))]
+               (is (= (:error retrieved-key) :password)))
              (done)))))

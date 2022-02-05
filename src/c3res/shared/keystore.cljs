@@ -84,10 +84,9 @@
 ; hash of the password. Eventually the password should be stored on a keyring for better
 ; usability.
 (defn get-master-key [master-key-input-path password-getter]
-  (go-loop [msg "An existing master key file found, trying to extract keys..."]
+  (go
     (if-let [master-key-input (<! (storage/get-file master-key-input-path))]
       (do
-        (print msg)
         (let [key-info (shards/csexp-to-map (csexp/decode master-key-input))
               user-pw (<! (password-getter))
               pw-hash (.crypto_pwhash sodium
@@ -99,13 +98,11 @@
                                       (.-crypto_pwhash_ALG_DEFAULT sodium))
               priv-key (array-xor (:key-seed key-info) pw-hash)]
           ; test that we really got a working key pair
-          (if-let [checked-keypair (try
-                                     (.crypto_sign_verify_detached sodium (.crypto_sign_detached sodium "test" priv-key) "test" (:public key-info))
-                                     {:sign-public (:public key-info) :sign-private priv-key}
-                                     (catch js/Error msg (print msg)))]
-            (assoc checked-keypair
-                   :enc-public (.crypto_sign_ed25519_pk_to_curve25519 sodium (:sign-public checked-keypair))
-                   :enc-private (.crypto_sign_ed25519_sk_to_curve25519 sodium (:sign-private checked-keypair)))
-            (recur "Invalid password for master key, please try again"))))
-      false)))
+          (if (.crypto_sign_verify_detached sodium (.crypto_sign_detached sodium "test" priv-key) "test" (:public key-info))
+            {:sign-public (:public key-info)
+             :sign-private priv-key
+             :enc-public (.crypto_sign_ed25519_pk_to_curve25519 sodium (:public key-info))
+             :enc-private (.crypto_sign_ed25519_sk_to_curve25519 sodium priv-key)}
+            {:error :password})))
+      {:error :nokey})))
 

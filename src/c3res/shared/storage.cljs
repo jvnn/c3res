@@ -8,9 +8,9 @@
 (def fs (node/require "fs"))
 (def path (node/require "path"))
 
-(defn- ensure-dir [path]
+(defn ensure-dir [path mode]
   (let [c (chan)]
-    (.mkdir fs path (clj->js {:recursive true :mode 0750}) #(put! c (nil? %1)))
+    (.mkdir fs path (clj->js {:recursive true :mode mode}) #(put! c (nil? %1)))
     c))
 
 (defn file-accessible [path]
@@ -21,7 +21,7 @@
 (defn store-file [filename data]
   (let [c (chan)]
     (go
-      (if (<! (ensure-dir (.dirname path filename)))
+      (if (<! (ensure-dir (.dirname path filename) 0750))
         (.writeFile fs filename data #(if %1 (put! c false) (put! c true)))
         (put! c false)))
     c))
