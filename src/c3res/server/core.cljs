@@ -1,5 +1,6 @@
 (ns c3res.server.core
   (:require [c3res.server.db :as db]
+            [c3res.shared.csexp :as csexp]
             [c3res.shared.shards :as shards]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.storage :as storage]
@@ -45,12 +46,13 @@
 
 (defn- validate-arg [key value args]
   (case key
+    :key-file (if (s/blank? value) (print "Empty key file path") true)
     :owner (if-not (and (string? value) (re-matches #"^[0-9a-z]{64}$" value)) (print "Invalid owner key format") true)
     :daemon (do (print "Daemon mode not yet implemented...") false)
     :db-root (try (.accessSync fs value) true (catch js/Error _ (print "Invalid db root path")))))
 
 (defn- validate-args [args]
-  (let [required #{:owner :db-root}
+  (let [required #{:owner :db-root :key-file}
         have (set (keys args))]
     (when-not (cset/subset? required have)
       (print "Missing mandatory arguments:" (s/join ", " (map #(str "--" (name %)) (cset/difference required have))))
@@ -67,16 +69,35 @@
     (if (not current)
       (validate-args args)
       (case (first current)
+        "--key-file" (recur (assoc args :key-file (second current)) (nnext current))
         "--owner" (recur (assoc args :owner (second current)) (nnext current))
         "--daemon" (recur (assoc args :daemon true) (next current))
         "--db-root" (recur (assoc args :db-root (second current)) (nnext current))
         (do (print "Invalid argument" (first current)) (.exit process 1))))))
 
+(defn- generate-keys [key-file]
+  (let [newkeys (shards/generate-keys)
+        keys-csexp (csexp/encode (conj (map #(seq [(name (first %)) (second %)]) newkeys) "serverkeys"))]
+    (.writeFileSync fs key-file keys-csexp)
+    newkeys))
+
+(defn- read-keys [key-file]
+  (let [keys-csexp (csexp/decode (.readFileSync fs key-file))]
+    (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} (rest keys-csexp))))
+
 (defn -main [& argv]
   (go
     (<! (sod/init))
     (let [args (parse-args argv)
-          db (db/open-db (.join path (:db-root args) (str (:owner args) ".db")))]
+          db (db/open-db (.join path (:db-root args) (str (:owner args) ".db")))
+          server-keypair (if (not (<! (storage/file-accessible (:key-file args))))
+                           (do
+                             (print "Non-existing key file path given: generating a new server key pair")
+                             (generate-keys (:key-file args)))
+                           (do
+                             (print "Using existing key file")
+                             (read-keys (:key-file args))))]
+      (print "Starting server with public key " (.to_hex (sod/get-sodium) (:enc-public server-keypair)))
       (let [app (express)
             allowed_authors #{(:owner args)}]
         (.get app "/" (fn [req res] (.send res "Hello C3RES!")))
