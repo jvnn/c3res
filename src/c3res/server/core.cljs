@@ -30,14 +30,19 @@
         (if-not (contains? allowed_authors (:author error-or-shard))
           (do (print (:author error-or-shard) allowed_authors) {:status 401 :error "Unauthorized author"})
           (if (<! (storage/store-shard "/tmp/c3res" {:id id :data data}))
-            nil
+            false
             {:status 500 :error "Internal error when trying to store the shard"})))))
   ; pass id to plugins for data duplication (backup) purposes...?
   )
 
-(defn- store-metadata [id data encrypted-key allowed_authors]
+(defn- store-metadata [id data allowed_authors server-keypair]
   (go
-    (<! (store-shard id data allowed_authors)))
+    (if-let [error-map (<! (store-shard id data allowed_authors))]
+      error-map
+      (if-let [shard (<! (shards/read-shard-caps id data server-keypair))]
+        ; TODO: write the ccontents into the database
+        true false)))
+
   ; TODO:
   ;  - use server priv key to decrypt stream key
   ;  - store metadata into database

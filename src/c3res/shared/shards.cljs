@@ -44,48 +44,66 @@
         envelope (-> shard
                      (csexp/wrap shard-id-str)
                      (csexp/append (seq ["signature" signature])))]
-    {:id shard-id-str :data (if (seq caps) (csexp/append envelope (seq ["caps" caps])) envelope)}))
-
-; TODO: To get this whole metadata stuff working...
-;   - add server pubkey into cmd line arguments (for now), and pass it below to use as a cap for metadata
+    {:id shard-id-str :data (if (seq caps) (csexp/append envelope (concat ["caps"] caps)) envelope)}))
 
 ; the main shard only contains the data and data type - everything else is in the metadata shard
-(defn create-with-metadata [contents contenttype labels root-keypair author-keypair cap-keys]
+(defn create-with-metadata [contents contenttype labels root-keypair author-keypair server-pubkey cap-keys]
   (let [keyvaluelabels (map seq (seq labels)) ; first seq converts a map to sequence of vectors
         metadata (seq ["metadata" (seq ["timestamp" (str (.now js/Date))]) (seq ["labels" (conj keyvaluelabels "map")])])]
     {:shard (create-shard contents contenttype root-keypair author-keypair cap-keys)
-     :metadata (create-shard metadata "c3res/metadata" root-keypair author-keypair [])}))
+     :metadata (create-shard metadata "c3res/metadata" root-keypair author-keypair (if (some? server-pubkey) [server-pubkey] []))}))
+
+(defn- validate-shard-internal [id root-parts]
+  (let [stored-id (first root-parts)
+        shard (second root-parts)
+        signature (second (csexp/decode (nth root-parts 2)))
+        calculated-id (.to_hex sodium (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard))]
+    (if (not (and (= calculated-id id) (= stored-id id)))
+      {:error (str "ID mismatch: expected " id ", calculated " calculated-id ", stored in envelope " stored-id)}
+      (let [shard-map (csexp-to-map (csexp/decode shard))
+            author-pubkey (.from_hex sodium (:author shard-map))]
+        (if (not (.crypto_sign_verify_detached sodium signature id author-pubkey))
+          {:error "Failed to validate shard author's signature"}
+          shard-map)))))
 
 (defn validate-shard [id full-shard]
   (if-let [root-parts (csexp/decode-single-layer full-shard)]
-    (let [stored-id (first root-parts)
-          shard (second root-parts)
-          signature (second (csexp/decode (nth root-parts 2)))
-          calculated-id (.to_hex sodium (.crypto_generichash sodium (.-crypto_generichash_BYTES sodium) shard))]
-      (if (not (and (= calculated-id id) (= stored-id id)))
-        {:error (str "ID mismatch: expected " id ", calculated " calculated-id ", stored in envelope " stored-id)}
-        (let [shard-map (csexp-to-map (csexp/decode shard))
-              author-pubkey (.from_hex sodium (:author shard-map))]
-          (if (not (.crypto_sign_verify_detached sodium signature id author-pubkey))
-            {:error "Failed to validate shard author's signature"}
-            shard-map))))
-    {:error "Invalid shard structure; not a valid csexpression"}))
+    (validate-shard-internal id root-parts)
+    {:error "Invalid shard structure; not a valid csexpression"})) 
 
-; currently just for my own shards: todo, add support for read caps, multiple keypairs (due to multiple identities)
-(defn read-shard [id full-shard my-keypair]
-  (let [shard-map (validate-shard id full-shard)]
+(defn- get-key-or-nil [cap keypair]
+  (try
+    (.crypto_box_seal_open sodium cap (:enc-public keypair) (:enc-private keypair))
+    (catch js/Error _ nil)))
+
+(defn- get-key-from-caps [root-parts keypair]
+  (let [caps (rest (csexp/decode (nth root-parts 3)))]
+    (some #(get-key-or-nil % keypair) caps)))
+
+(defn- read-shard-internal [id full-shard my-keypair use-caps]
+  (let [root-parts (csexp/decode-single-layer full-shard)
+        shard-map (if (:error root-parts) root-parts (validate-shard id full-shard))]
     (if (:error shard-map)
       shard-map ; propagate error to caller
-      (let [stream-key-and-random (.crypto_box_seal_open sodium (:rootcap shard-map) (:enc-public my-keypair) (:enc-private my-keypair))
-            stream-key (.slice stream-key-and-random 0 (/ (.-length stream-key-and-random) 2))
-            plaintext (.crypto_secretbox_open_easy sodium (:encrypted shard-map) (:nonce shard-map) stream-key)
-            shard-as-map (csexp-to-map (csexp/decode plaintext))]
-        (if (= (:type shard-as-map) "c3res/metadata")
-          ; special handling for metadata: replace "raw" with pre-processed map
-          (let [metadata (csexp-to-map (:raw shard-as-map))
-                shard-without-raw (dissoc shard-as-map :raw)]
-            (assoc shard-without-raw :metadata (assoc metadata :labels (apply hash-map (flatten (rest (:labels metadata)))))))
-          shard-as-map)))))
+      (if-let [stream-key-and-random (if use-caps
+                                       (get-key-from-caps root-parts my-keypair)
+                                       (get-key-or-nil (:rootcap shard-map) my-keypair))]
+        (let [stream-key (.slice stream-key-and-random 0 (/ (.-length stream-key-and-random) 2))
+              plaintext (.crypto_secretbox_open_easy sodium (:encrypted shard-map) (:nonce shard-map) stream-key)
+              shard-as-map (csexp-to-map (csexp/decode plaintext))]
+          (if (= (:type shard-as-map) "c3res/metadata")
+            ; special handling for metadata: replace "raw" with pre-processed map
+            (let [metadata (csexp-to-map (:raw shard-as-map))
+                  shard-without-raw (dissoc shard-as-map :raw)]
+              (assoc shard-without-raw :metadata (assoc metadata :labels (apply hash-map (flatten (rest (:labels metadata)))))))
+            shard-as-map))
+        {:error "Could not extract shard key"}))))
+
+(defn read-shard [id full-shard my-keypair]
+  (read-shard-internal id full-shard my-keypair false))
+
+(defn read-shard-caps [id full-shard my-keypair]
+  (read-shard-internal id full-shard my-keypair true))
 
 (defn pretty-print [shard]
   (print "-----")

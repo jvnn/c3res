@@ -77,15 +77,19 @@
                      (<! (keystore/create-master-key master-key-input-path create-password-interactive))))
           master-key)))))
 
+(defn- is-hash-64 [possible-hash]
+  (re-matches #"[0-9a-f]{64}" possible-hash))
+
 (defn- validate-arg [key value args]
   (go
     (case key
       :config-dir (if-not (<! (storage/ensure-dir value 0750)) (print (str "Invalid config directory '" value "' given")) true)
+      :server-pubkey (if-not (is-hash-64 value) (print "Invalid server public key") true)
       :password (if (s/blank? value) (print "Invalid or missing password") true)
       :store (if-not (<! (storage/file-accessible value)) (print (str "Cannot find or access file '" value "' to store")) true)
       :labels (if (or (nil? (:store args)) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
                 (print "Invalid label(s) or labels provided without --store") true)
-      :fetch (if-not (re-matches #"[0-9a-f]{64}" value) (print "Invalid id hash") true)
+      :fetch (if-not (is-hash-64 value) (print "Invalid id hash") true)
       :server (if (some #(contains? args %) [:store :fetch]) (print "Cannot use --server together with --store / --fetch") true)
       :daemon (if (or (nil? (:server args)) (some #(contains? args %) [:store :fetch]))
                 (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false))
@@ -100,7 +104,7 @@
       args)))
 
 ; TODO: some possible future commands:
-;   --restore-master-key: takes the above as a parameter to regenerate backed up key
+;   --restore-master-key: takes a key pair as a parameter to regenerate backed up key
 ;   --change-master-key-password: allow changing the password of the master key seed 
 (defn- parse-args [argv]
   (go-loop [args {} current argv]
@@ -108,6 +112,7 @@
       (<! (validate-args args))
       (case (first current)
         "--config-dir" (recur (assoc args :config-dir (second current)) (nnext current))
+        "--server-pubkey" (recur (assoc args :server-pubkey (second current)) (nnext current))
         "--password" (recur (assoc args :password (second current)) (nnext current))
         "--store" (recur (assoc args :store (second current)) (nnext current))
         "--label" (recur (assoc args :labels (conj (or (:labels args) []) (second current))) (nnext current))
@@ -137,7 +142,7 @@
           ; CONTINUE HERE:
           ;    - implement mime type support (check npm mime package)
           (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) (chan 2) master-key))))))
+                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) (chan 2) master-key (:server-pubkey args) []))))))
           (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key))]
                           (shards/pretty-print contents)
                           (print "Could not find shard with id" (:fetch args)))
