@@ -49,9 +49,15 @@
 ; the main shard only contains the data and data type - everything else is in the metadata shard
 (defn create-with-metadata [contents contenttype labels root-keypair author-keypair server-pubkey cap-keys]
   (let [keyvaluelabels (map seq (seq labels)) ; first seq converts a map to sequence of vectors
-        metadata (seq ["metadata" (seq ["timestamp" (str (.now js/Date))]) (seq ["labels" (conj keyvaluelabels "map")])])]
-    {:shard (create-shard contents contenttype root-keypair author-keypair cap-keys)
-     :metadata (create-shard metadata "c3res/metadata" root-keypair author-keypair (if (some? server-pubkey) [server-pubkey] []))}))
+        metadata ["metadata" (seq ["timestamp" (str (.now js/Date))]) (seq ["labels" (conj keyvaluelabels "map")])]
+        shard (create-shard contents contenttype root-keypair author-keypair cap-keys)]
+    {:shard shard
+     :metadata (create-shard
+                 (seq (conj metadata (seq ["for" (:id shard)])))
+                 "c3res/metadata"
+                 root-keypair
+                 author-keypair
+                 (if (some? server-pubkey) [server-pubkey] []))}))
 
 (defn- validate-shard-internal [root-parts]
   (let [stored-id (first root-parts)

@@ -19,6 +19,7 @@
         (is (nil? (:error metadata)))
         (is (= (:raw contents) "foo"))
         (is (= (:labels (:metadata metadata)) {"label1" "value1" "label2" "value2"}))
+        (is (= (:for (:metadata metadata)) (:id (:shard with-metadata))))
         (done)))))
 
 (deftest test-create-read-with-caps
@@ -40,4 +41,5 @@
         (is (nil? (:error metadata)))
         (is (= (:raw contents) "foo"))
         (is (= (:labels (:metadata metadata)) {"label" "value"}))
+        (is (= (:for (:metadata metadata)) (:id (:shard with-metadata))))
         (done)))))
