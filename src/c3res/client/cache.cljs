@@ -32,12 +32,18 @@
           {:shard-id shard-id :metadata-id metadata-id}
           {:error "Failed to cache shard to storage"})))))
 
+; XXX: improve error handling: throw or return :error maps
 (defn fetch [cache-path id my-keys]
   (go
     ; TODO: replace nil here with a request to server 
     (when-let [shard (or (<! (storage/get-shard cache-path id)) nil)]
-      (let [shard-map (shards/read-shard id shard my-keys)]
-        (if (:error shard-map)
-          (print "Failed to retrieve a shard: " (:error shard-map))
-          shard-map)))))
+      (let [id-and-author (shards/validate-shard shard)]
+        (cond
+          (:error id-and-author) (print "Cached shard did not pass validation:" (:error id-and-author))
+          (not= id (:id id-and-author)) (print "ID mismatch in cache: file stored as" id " but validation returned " (:id id-and-author))
+          :else
+          (let [shard-map (shards/read-shard shard my-keys)]
+            (if (:error shard-map)
+              (print "Failed to retrieve a shard: " (:error shard-map))
+              shard-map)))))))
 

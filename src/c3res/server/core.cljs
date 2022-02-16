@@ -22,32 +22,48 @@
 
 ; XXX The server crashes when you send multipart data to it...
 
-(defn- store-shard [id data allowed_authors]
+(defn- store-shard [expected-id data allowed_authors]
   (go
-    (let [error-or-shard (shards/validate-shard id data)]
-      (if (:error error-or-shard)
-        (assoc error-or-shard :status 400)
-        (if-not (contains? allowed_authors (:author error-or-shard))
-          (do (print (:author error-or-shard) allowed_authors) {:status 401 :error "Unauthorized author"})
-          (if (<! (storage/store-shard "/tmp/c3res" {:id id :data data}))
-            false
+    (let [id-and-author (shards/validate-shard data)]
+      (cond
+        (:error id-and-author) (assoc id-and-author :status 400)
+        (and (some? expected-id) (not= expected-id (:id id-and-author))) {:status 400 :error "ID mismatch between path and shard"}
+        :else
+        (if-not (contains? allowed_authors (:author id-and-author))
+          {:status 401 :error "Unauthorized author"}
+          (if (<! (storage/store-shard "/tmp/c3res" {:id (:id id-and-author) :data data}))
+            {:success true}
             {:status 500 :error "Internal error when trying to store the shard"})))))
   ; pass id to plugins for data duplication (backup) purposes...?
   )
 
-(defn- store-metadata [id data allowed_authors server-keypair]
+(defn- store-metadata [data allowed_authors server-keypair db]
   (go
-    (if-let [error-map (<! (store-shard id data allowed_authors))]
-      error-map
-      (if-let [shard (<! (shards/read-shard-caps id data server-keypair))]
-        ; TODO: write the ccontents into the database
-        true false)))
-
+    (let [result (<! (store-shard nil data allowed_authors))]
+      (if (:error result)
+        result ; propagate error
+        (if-let [shard (shards/read-shard-caps data server-keypair)]
+          (do (print shard) {:success true})
+          {:status 400 :error "Invalid metadata shard"}))))
   ; TODO:
   ;  - use server priv key to decrypt stream key
   ;  - store metadata into database
   ;  - pass metadata to plugins / extensions for things like federation
   )
+
+(defn- parse-payload [payload allowed_authors server-keypair db]
+  (go
+    (if-let [parts (csexp/decode-single-layer payload)]
+      (if (= "c3res-envelope" (first parts))
+        (doseq [single (rest parts)]
+          (if-let [[type contents] (csexp/decode-single-layer single)]
+            (case type
+              "shard" (<! (store-shard nil contents allowed_authors))
+              "metadata" (<! (store-metadata contents allowed_authors server-keypair db))
+              {:status 400 :error "Invalid envelope content type"})
+            {:status 400 :error "Invalid element in envelope"}))
+        {:status 400 :error (str "Unknown payload type: " (first parts))})
+      {:status 400 :error "Invalid payload structure"})))
 
 (defn- validate-arg [key value args]
   (case key
@@ -90,6 +106,9 @@
   (let [keys-csexp (csexp/decode (.readFileSync fs key-file))]
     (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} (rest keys-csexp))))
 
+(defn- ret-error [res error-map]
+  (.writeHead res (:status error-map) (:error error-map)))
+
 (defn -main [& argv]
   (go
     (<! (sod/init))
@@ -108,9 +127,14 @@
         (.get app "/" (fn [req res] (.send res "Hello C3RES!")))
 
         (.get app "/shard/:id" (fn [req res] (.send res (str "Would return shard " (.-id (.-params req))))))
+        (.post app "/shard" (.raw body-parser) (fn [req res] (go
+                                                               (if-let [error-map (<! (parse-payload (.-body req) allowed_authors server-keypair db))]
+                                                                 (ret-error res error-map)
+                                                                 (.writeHead res 200))
+                                                               (.end res))))
         (.put app "/shard/:id" (.raw body-parser) (fn [req res] (go
                                                                   (if-let [error-map (<! (store-shard (.-id (.-params req)) (.-body req) allowed_authors))]
-                                                                    (.writeHead res (:status error-map) (:error error-map))
+                                                                    (ret-error res error-map)
                                                                     (.writeHead res 200))
                                                                   (.end res))))
 
