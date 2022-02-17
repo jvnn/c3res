@@ -3,15 +3,18 @@
             [c3res.shared.storage :as storage]
             [clojure.string :as s]
             [cljs.core.async :as async :refer [<! >!]])
-  (:require-macros [cljs.core.async.macros :refer [go]]))
+  (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
-(defn- cache-single [shard cache-path upstream-chan]
-  (go
-    (if-not (<! (storage/store-shard cache-path shard))
-      false
+(defn- cache-and-upload [shards cache-path upstream-chan]
+  (go-loop [shard (first shards) remaining (rest shards) failed-ids []]
+    (if (nil? shard)
       (do
-        (>! upstream-chan (:id shard))
-        (:id shard)))))
+        ; try to upload regardless of how caching went
+        (>! upstream-chan shards)
+        failed-ids)
+      (if (<! (storage/store-shard cache-path shard))
+        (recur (first remaining) (rest remaining) failed-ids)
+        (recur (first remaining) (rest remaining) (conj failed-ids (:id shard)))))))
 
 (defn new-shard [cache-path content content-type labels upstream-chan my-keys server-pubkey cap-keys]
   (go
@@ -26,11 +29,10 @@
       {:error "Invalid content: expecting a non-empty string or byte array"}
       :else
       (let [shard-and-metadata (shards/create-with-metadata content content-type labels my-keys my-keys server-pubkey cap-keys)
-            shard-id (<! (cache-single (:shard shard-and-metadata) cache-path upstream-chan))
-            metadata-id (<! (cache-single (:metadata shard-and-metadata) cache-path upstream-chan))]
-        (if (and shard-id metadata-id)
-          {:shard-id shard-id :metadata-id metadata-id}
-          {:error "Failed to cache shard to storage"})))))
+            failed-ids (<! (cache-and-upload [(:shard shard-and-metadata) (:metadata shard-and-metadata)] cache-path upstream-chan))]
+        (if (seq failed-ids)
+          {:error (str "Failed to cache following ids: " (s/join " " failed-ids))}
+          {:shard-id (:id (:shard shard-and-metadata)) :metadata-id (:id (:metadata shard-and-metadata))})))))
 
 ; XXX: improve error handling: throw or return :error maps
 (defn fetch [cache-path id my-keys]

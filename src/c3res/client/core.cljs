@@ -1,5 +1,6 @@
 (ns c3res.client.core
   (:require [c3res.client.cache :as cache]
+            [c3res.client.http :as http]
             [c3res.shared.keystore :as keystore]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.shards :as shards]
@@ -21,6 +22,9 @@
 
 (defn- get-config-dir [args]
   (or (:config-dir args) (.join path (.homedir os) ".c3res")))
+
+(defn- get-server-config-file-path [config-dir]
+  (.join path config-dir "server-config.json"))
 
 (defn- get-master-key-input-path [args]
   (.join path (get-config-dir args) "master-key-input"))
@@ -84,7 +88,6 @@
   (go
     (case key
       :config-dir (if-not (<! (storage/ensure-dir value 0750)) (print (str "Invalid config directory '" value "' given")) true)
-      :server-pubkey (if-not (is-hash-64 value) (print "Invalid server public key") true)
       :password (if (s/blank? value) (print "Invalid or missing password") true)
       :store (if-not (<! (storage/file-accessible value)) (print (str "Cannot find or access file '" value "' to store")) true)
       :labels (if (or (nil? (:store args)) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
@@ -112,7 +115,6 @@
       (<! (validate-args args))
       (case (first current)
         "--config-dir" (recur (assoc args :config-dir (second current)) (nnext current))
-        "--server-pubkey" (recur (assoc args :server-pubkey (second current)) (nnext current))
         "--password" (recur (assoc args :password (second current)) (nnext current))
         "--store" (recur (assoc args :store (second current)) (nnext current))
         "--label" (recur (assoc args :labels (conj (or (:labels args) []) (second current))) (nnext current))
@@ -121,6 +123,24 @@
         "--daemon" (recur (assoc args :daemon true) (next current))
         "--print-master-key" (recur (assoc args :print-master-key true) (next current))
         (do (print "Invalid argument" (first current)) (.exit process 1))))))
+
+(defn- validate-server-config [config]
+  (cond
+    (not (vector? config)) (print "Invalid root config type: expecting a list")
+    (not= (count config) 1) (print "Currently supporting only one server endpoint")
+    (not= (map? (first config))) (print "Invalid item in config list: expecting an object")
+    (not= ((first config) "type") "http") (print "Currently supporting only HTTP endpoints")
+    (not= (set (keys (first config))) #{"type", "server", "port", "pubkey"}) (print "Unexpected set of keys in an endpoint configuration")
+    (not (is-hash-64 ((first config) "pubkey"))) (print "Invalid server pubkey format")
+    :else true))
+
+(defn- parse-server-config-file [args]
+  (let [config-file-path (get-server-config-file-path (get-config-dir args))
+        config-file (.readFileSync fs config-file-path "utf8")
+        server-configs (js->clj (.parse js/JSON config-file))]
+    (if-not (validate-server-config server-configs)
+      (do (print "Invalid configuration; terminating") (.exit process 1))
+      server-configs)))
 
 (defn- get-labels [args]
   (let [filename (.basename path (:store args))
@@ -136,13 +156,14 @@
     (when-let [args (<! (parse-args argv))]
       (let [master-key (<! (get-or-create-master-key args))
             cache-path (get-shard-cache-path args)
+            server-config (first (parse-server-config-file args))
             sodium (sod/get-sodium)]
         (cond
           (:print-master-key args) (print "public: " (.to_hex sodium (:sign-public master-key)) "\nprivate: " (.to_hex sodium (:sign-private master-key)))
           ; CONTINUE HERE:
           ;    - implement mime type support (check npm mime package)
           (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) (chan 2) master-key (:server-pubkey args) []))))))
+                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) (chan 2) master-key ("pubkey" server-config) []))))))
           (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key))]
                           (shards/pretty-print contents)
                           (print "Could not find shard with id" (:fetch args)))
