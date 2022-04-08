@@ -5,16 +5,15 @@
             [cljs.core.async :as async :refer [<! >!]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
-(defn- cache-and-upload [shards cache-path upstream-chan]
-  (go-loop [shard (first shards) remaining (rest shards) failed-ids []]
-    (if (nil? shard)
-      (do
-        ; try to upload regardless of how caching went
-        (>! upstream-chan shards)
-        failed-ids)
-      (if (<! (storage/store-shard cache-path shard))
-        (recur (first remaining) (rest remaining) failed-ids)
-        (recur (first remaining) (rest remaining) (conj failed-ids (:id shard)))))))
+(defn- cache-and-upload [shard-and-metadata cache-path upstream-chan]
+  (go
+    (let [shard (:shard shard-and-metadata)
+          metadata (:metadata shard-and-metadata)
+          results [[(:id shard) (<! (storage/store-shard cache-path shard))]
+                   [(:id metadata) (<! (storage/store-shard cache-path metadata))]]]
+      ; try to upload regardless of how caching went
+      (>! upstream-chan shard-and-metadata)
+      (reduce #(if-not (second %2) (conj %1 (first %2)) %1) '() results))))
 
 (defn new-shard [cache-path content content-type labels upstream-chan my-keys server-pubkey cap-keys]
   (go
@@ -29,7 +28,7 @@
       {:error "Invalid content: expecting a non-empty string or byte array"}
       :else
       (let [shard-and-metadata (shards/create-with-metadata content content-type labels my-keys my-keys server-pubkey cap-keys)
-            failed-ids (<! (cache-and-upload [(:shard shard-and-metadata) (:metadata shard-and-metadata)] cache-path upstream-chan))]
+            failed-ids (<! (cache-and-upload shard-and-metadata cache-path upstream-chan))]
         (if (seq failed-ids)
           {:error (str "Failed to cache following ids: " (s/join " " failed-ids))}
           {:shard-id (:id (:shard shard-and-metadata)) :metadata-id (:id (:metadata shard-and-metadata))})))))

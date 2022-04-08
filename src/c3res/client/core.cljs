@@ -1,6 +1,6 @@
 (ns c3res.client.core
   (:require [c3res.client.cache :as cache]
-            [c3res.client.http :as http]
+            [c3res.client.upload :as upload]
             [c3res.shared.keystore :as keystore]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.shards :as shards]
@@ -129,15 +129,18 @@
     (not (vector? config)) (print "Invalid root config type: expecting a list")
     (not= (count config) 1) (print "Currently supporting only one server endpoint")
     (not= (map? (first config))) (print "Invalid item in config list: expecting an object")
-    (not= ((first config) "type") "http") (print "Currently supporting only HTTP endpoints")
-    (not= (set (keys (first config))) #{"type", "server", "port", "pubkey"}) (print "Unexpected set of keys in an endpoint configuration")
-    (not (is-hash-64 ((first config) "pubkey"))) (print "Invalid server pubkey format")
+    (not= ((first config) :type) "http") (print "Currently supporting only HTTP endpoints")
+    (not= (set (keys (first config))) #{:type, :server, :port, :pubkey}) (print "Unexpected set of keys in an endpoint configuration")
+    (not (is-hash-64 ((first config) :pubkey))) (print "Invalid server pubkey format")
     :else true))
+
+(defn- convert-to-keywords [keyvalues]
+  (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} keyvalues))
 
 (defn- parse-server-config-file [args]
   (let [config-file-path (get-server-config-file-path (get-config-dir args))
         config-file (.readFileSync fs config-file-path "utf8")
-        server-configs (js->clj (.parse js/JSON config-file))]
+        server-configs (mapv convert-to-keywords (js->clj (.parse js/JSON config-file)))]
     (if-not (validate-server-config server-configs)
       (do (print "Invalid configuration; terminating") (.exit process 1))
       server-configs)))
