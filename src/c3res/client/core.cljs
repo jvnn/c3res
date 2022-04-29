@@ -166,7 +166,7 @@
           ; CONTINUE HERE:
           ;    - implement mime type support (check npm mime package)
           (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) (chan 2) master-key ("pubkey" server-config) []))))))
+                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) (upload/init server-config) master-key (.from_hex sodium (:pubkey server-config)) []))))))
           (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key))]
                           (shards/pretty-print contents)
                           (print "Could not find shard with id" (:fetch args)))

@@ -94,6 +94,15 @@
     (put-str view ")" 1 (- (.-length uint8buf) 1))
     uint8buf))
 
+(defn append-raw [csexp addition]
+  (let [newbuf (js/ArrayBuffer. (+ (.-length csexp) (.-length addition)))
+        uint8buf (js/Uint8Array. newbuf)
+        view (js/DataView. newbuf)]
+    (.set uint8buf csexp)
+    (.set uint8buf addition (dec (.-length csexp)))
+    (put-str view ")" 1 (dec (.-length uint8buf)))
+    uint8buf))
+
 ; -----------------------------------------------------------------------------
 
 (defn- get-int [string]

@@ -31,8 +31,7 @@
         :else
         (if-not (contains? allowed_authors (:author id-and-author))
           {:status 401 :error "Unauthorized author"}
-          (if (<! (storage/store-shard "/tmp/c3res" {:id (:id id-and-author) :data data}))
-            {:success true}
+          (when-not (<! (storage/store-shard "/tmp/c3res" {:id (:id id-and-author) :data data}))
             {:status 500 :error "Internal error when trying to store the shard"})))))
   ; pass id to plugins for data duplication (backup) purposes...?
   )
@@ -43,10 +42,9 @@
       (if (:error result)
         result ; propagate error
         (if-let [shard (shards/read-shard-caps data server-keypair)]
-          (do (print shard) {:success true})
+          (print shard)
           {:status 400 :error "Invalid metadata shard"}))))
   ; TODO:
-  ;  - use server priv key to decrypt stream key
   ;  - store metadata into database
   ;  - pass metadata to plugins / extensions for things like federation
   )
@@ -55,12 +53,15 @@
   (go
     (if-let [parts (csexp/decode-single-layer payload)]
       (if (= "c3res-envelope" (first parts))
-        (doseq [single (rest parts)]
+        (loop [single (first (rest parts)) remaining (rest (rest parts))]
           (if-let [[type contents] (csexp/decode-single-layer single)]
-            (case type
-              "shard" (<! (store-shard nil contents allowed_authors))
-              "metadata" (<! (store-metadata contents allowed_authors server-keypair db))
-              {:status 400 :error "Invalid envelope content type"})
+            (let [result (case type
+                           "shard" (<! (store-shard nil contents allowed_authors))
+                           "metadata" (<! (store-metadata contents allowed_authors server-keypair db))
+                           {:status 400 :error "Invalid envelope content type"})]
+              (if (or (some? result) (nil? (first remaining)))
+                result
+                (recur (first remaining) (rest remaining))))
             {:status 400 :error "Invalid element in envelope"}))
         {:status 400 :error (str "Unknown payload type: " (first parts))})
       {:status 400 :error "Invalid payload structure"})))

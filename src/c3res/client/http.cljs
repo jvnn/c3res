@@ -9,6 +9,7 @@
 (defn- handle-response [res c-status c-data]
   (let [status (.-statusCode res)]
     (go (>! c-status status))
+    (when-not (= status 200) (go (>! c-data (.-statusMessage res))))
     (.on res "data" #(go (>! c-data (str %))))
     (.on res "end" #(go (>! c-data :end)))))
 

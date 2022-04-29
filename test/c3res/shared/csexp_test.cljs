@@ -65,6 +65,12 @@
     (is (= (buf-to-str csexp2) "(3:bar(3:foo))"))
     (is (= (buf-to-str csexp3) "((4:!bin3:baz)(3:bar(3:foo)))"))))
 
+(deftest test-append-raw
+  (let [csexp1 (csexp/encode '("foo"))
+        csexp2 (csexp/encode '("bar"))
+        res (csexp/append-raw csexp1 csexp2)]
+    (is (= (buf-to-str res) "(3:foo(3:bar))"))))
+
 (deftest test-decode-single-layer
   (let [test-csexp (csexp/encode '("foo" ("bar" ("1") "(baz") "boom"))
         parts (csexp/decode-single-layer test-csexp)]
@@ -73,3 +79,9 @@
     (is (= (buf-to-str (second parts)) "(3:bar(1:1)4:(baz)"))
     (is (= (nth parts 2) "boom"))))
 
+(deftest test-decode-single-layer2
+  (let [test-csexp (map #(.charCodeAt % 0) (seq "(3:foo(4:!bin21:(4:123410:(((((((((()))"))
+        parts (csexp/decode-single-layer test-csexp)]
+    (is (= (count parts) 2))
+    (is (= (first parts) "foo"))
+    (is (= (buf-to-str (second parts)) "(4:!bin21:(4:123410:(((((((((())"))))
