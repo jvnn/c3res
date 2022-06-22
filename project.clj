@@ -17,7 +17,7 @@
       [source-map-support "0.5.19"]
       [libsodium-wrappers "0.7.9"]
       [prompt "1.1.0"]
-      [sqlite3 "5.0.2"]]}
+      [sqlite3 "5.0.8"]]}
 
   :clean-targets ^{:protect false} ["server_out" "client_out" "test_out"]
 

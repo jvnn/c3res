@@ -31,25 +31,27 @@
         :else
         (if-not (contains? allowed_authors (:author id-and-author))
           {:status 401 :error "Unauthorized author"}
-          (when-not (<! (storage/store-shard "/tmp/c3res" {:id (:id id-and-author) :data data}))
-            {:status 500 :error "Internal error when trying to store the shard"})))))
+          (if-not (<! (storage/store-shard "/tmp/c3res" {:id (:id id-and-author) :data data}))
+            {:status 500 :error "Internal error when trying to store the shard"}
+            id-and-author)))))
   ; pass id to plugins for data duplication (backup) purposes...?
   )
 
-(defn- store-metadata [data allowed_authors server-keypair db]
+(defn- store-metadata [data allowed_authors server-keypair database]
   (go
     (let [result (<! (store-shard nil data allowed_authors))]
       (if (:error result)
         result ; propagate error
         (if-let [shard (shards/read-shard-caps data server-keypair)]
-          (print shard)
+          (let [metadata (:metadata shard)]
+            (db/store-shard-metadata database (:for metadata) (:timestamp metadata) (:author result) (:labels metadata)))
           {:status 400 :error "Invalid metadata shard"}))))
   ; TODO:
   ;  - store metadata into database
   ;  - pass metadata to plugins / extensions for things like federation
   )
 
-(defn- parse-payload [payload allowed_authors server-keypair db]
+(defn- parse-payload [payload allowed_authors server-keypair database]
   (go
     (if-let [parts (csexp/decode-single-layer payload)]
       (if (= "c3res-envelope" (first parts))
@@ -57,9 +59,9 @@
           (if-let [[type contents] (csexp/decode-single-layer single)]
             (let [result (case type
                            "shard" (<! (store-shard nil contents allowed_authors))
-                           "metadata" (<! (store-metadata contents allowed_authors server-keypair db))
+                           "metadata" (<! (store-metadata contents allowed_authors server-keypair database))
                            {:status 400 :error "Invalid envelope content type"})]
-              (if (or (some? result) (nil? (first remaining)))
+              (if (or (:error result) (nil? (first remaining)))
                 result
                 (recur (first remaining) (rest remaining))))
             {:status 400 :error "Invalid element in envelope"}))
@@ -114,7 +116,7 @@
   (go
     (<! (sod/init))
     (let [args (parse-args argv)
-          db (db/open-db (.join path (:db-root args) (str (:owner args) ".db")))
+          database (<! (db/open-db (.join path (:db-root args) (str (:owner args) ".db"))))
           server-keypair (if (not (<! (storage/file-accessible (:key-file args))))
                            (do
                              (print "Non-existing key file path given: generating a new server key pair")
@@ -129,15 +131,17 @@
 
         (.get app "/shard/:id" (fn [req res] (.send res (str "Would return shard " (.-id (.-params req))))))
         (.post app "/shard" (.raw body-parser) (fn [req res] (go
-                                                               (if-let [error-map (<! (parse-payload (.-body req) allowed_authors server-keypair db))]
-                                                                 (ret-error res error-map)
-                                                                 (.writeHead res 200))
-                                                               (.end res))))
+                                                               (let [error-map (<! (parse-payload (.-body req) allowed_authors server-keypair database))]
+                                                                 (if (:error error-map)
+                                                                   (ret-error res error-map)
+                                                                   (.writeHead res 200))
+                                                                 (.end res)))))
         (.put app "/shard/:id" (.raw body-parser) (fn [req res] (go
-                                                                  (if-let [error-map (<! (store-shard (.-id (.-params req)) (.-body req) allowed_authors))]
-                                                                    (ret-error res error-map)
-                                                                    (.writeHead res 200))
-                                                                  (.end res))))
+                                                                  (let [error-map (<! (store-shard (.-id (.-params req)) (.-body req) allowed_authors))]
+                                                                    (if (:error error-map)
+                                                                      (ret-error res error-map)
+                                                                      (.writeHead res 200))
+                                                                    (.end res)))))
 
         (.listen app 3001 #(print "Listening on port 3001"))))))
 
