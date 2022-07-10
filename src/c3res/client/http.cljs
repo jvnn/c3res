@@ -10,7 +10,7 @@
   (let [status (.-statusCode res)]
     (go (>! c-status status))
     (when-not (= status 200) (go (>! c-data (.-statusMessage res))))
-    (.on res "data" #(go (>! c-data (str %))))
+    (.on res "data" #(go (>! c-data (js/Uint8Array. %))))
     (.on res "end" #(go (>! c-data :end)))))
 
 (defn- handle-error [c-out]
@@ -19,7 +19,7 @@
 (defn- receive-full-data [c-status c-resp c-out]
   (go
     (let [status (<! c-status)]
-      (loop [data ""]
+      (loop [data (js/Uint8Array. [])]
         (let [chunk (<! c-resp)]
           (cond
             (nil? chunk)
@@ -31,7 +31,10 @@
               (close! c-resp)
               (>! c-out {:status status :data data}))
             :else
-            (recur (str data chunk)))))))
+            (let [newarray (js/Uint8Array. (+ (.-length data) (.-length chunk)))]
+              (.set newarray data)
+              (.set newarray chunk (.-length data))
+              (recur newarray)))))))
   c-out)
 
 (defn- add-data-headers [headers data]
@@ -55,12 +58,8 @@
     (.end req)
     (receive-full-data c-status c-resp c-out)))
 
-(defn do-get [url]
-  (let [c-status (chan)
-        c-resp (chan)
-        c-out (chan)]
-    (.on (.get http url #(handle-response % c-status c-resp)) "error" #(handle-error c-out))
-    (receive-full-data c-status c-resp c-out)))
+(defn do-get [host port path]
+  (do-http-request host port path nil nil "GET"))
 
 (defn do-post [host port path body headers]
   (do-http-request host port path body headers "POST"))

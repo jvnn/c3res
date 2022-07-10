@@ -46,10 +46,14 @@
           (let [metadata (:metadata shard)]
             (db/store-shard-metadata database (:for metadata) (:timestamp metadata) (:author result) (:labels metadata)))
           {:status 400 :error "Invalid metadata shard"}))))
-  ; TODO:
-  ;  - store metadata into database
-  ;  - pass metadata to plugins / extensions for things like federation
+  ; TODO: pass metadata to plugins / extensions for things like federation
   )
+
+(defn- get-shard [id]
+  (go
+    (if-let [shard (<! (storage/get-shard "/tmp/c3res" id))]
+      {:shard shard}
+      {:error "Could not find a shard with given ID" :status 404})))
 
 (defn- parse-payload [payload allowed_authors server-keypair database]
   (go
@@ -129,7 +133,15 @@
             allowed_authors #{(:owner args)}]
         (.get app "/" (fn [req res] (.send res "Hello C3RES!")))
 
-        (.get app "/shard/:id" (fn [req res] (.send res (str "Would return shard " (.-id (.-params req))))))
+        (.get app "/shard/:id" (fn [req res] (go
+                                               (let [result (<! (get-shard (.-id (.-params req))))]
+                                                 (if (:error result)
+                                                   (ret-error res result)
+                                                   (do
+                                                     (.writeHead res 200 (clj->js {"Content-Type" "application/octet-stream"
+                                                                                   "Content-Length" (str (.-length (:shard result)))}))
+                                                     (.write res (:shard result))))
+                                                 (.end res)))))
         (.post app "/shard" (.raw body-parser) (fn [req res] (go
                                                                (let [error-map (<! (parse-payload (.-body req) allowed_authors server-keypair database))]
                                                                  (if (:error error-map)
