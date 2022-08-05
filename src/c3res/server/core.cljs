@@ -22,7 +22,7 @@
 
 ; XXX The server crashes when you send multipart data to it...
 
-(defn- store-shard [expected-id data allowed_authors]
+(defn- store-shard [args expected-id data allowed_authors]
   (go
     (let [id-and-author (shards/validate-shard data)]
       (cond
@@ -31,15 +31,15 @@
         :else
         (if-not (contains? allowed_authors (:author id-and-author))
           {:status 401 :error "Unauthorized author"}
-          (if-not (<! (storage/store-shard "/tmp/c3res" {:id (:id id-and-author) :data data}))
+          (if-not (<! (storage/store-shard (:storage args) {:id (:id id-and-author) :data data}))
             {:status 500 :error "Internal error when trying to store the shard"}
             id-and-author)))))
   ; pass id to plugins for data duplication (backup) purposes...?
   )
 
-(defn- store-metadata [data allowed_authors server-keypair database]
+(defn- store-metadata [args data allowed_authors server-keypair database]
   (go
-    (let [result (<! (store-shard nil data allowed_authors))]
+    (let [result (<! (store-shard args nil data allowed_authors))]
       (if (:error result)
         result ; propagate error
         (if-let [shard (shards/read-shard-caps data server-keypair)]
@@ -49,21 +49,21 @@
   ; TODO: pass metadata to plugins / extensions for things like federation
   )
 
-(defn- get-shard [id]
+(defn- get-shard [args id]
   (go
-    (if-let [shard (<! (storage/get-shard "/tmp/c3res" id))]
+    (if-let [shard (<! (storage/get-shard (:storage args) id))]
       {:shard shard}
       {:error "Could not find a shard with given ID" :status 404})))
 
-(defn- parse-payload [payload allowed_authors server-keypair database]
+(defn- parse-payload [args payload allowed_authors server-keypair database]
   (go
     (if-let [parts (csexp/decode-single-layer payload)]
       (if (= "c3res-envelope" (first parts))
         (loop [single (first (rest parts)) remaining (rest (rest parts))]
           (if-let [[type contents] (csexp/decode-single-layer single)]
             (let [result (case type
-                           "shard" (<! (store-shard nil contents allowed_authors))
-                           "metadata" (<! (store-metadata contents allowed_authors server-keypair database))
+                           "shard" (<! (store-shard args nil contents allowed_authors))
+                           "metadata" (<! (store-metadata args contents allowed_authors server-keypair database))
                            {:status 400 :error "Invalid envelope content type"})]
               (if (or (:error result) (nil? (first remaining)))
                 result
@@ -77,10 +77,11 @@
     :key-file (if (s/blank? value) (print "Empty key file path") true)
     :owner (if-not (and (string? value) (re-matches #"^[0-9a-z]{64}$" value)) (print "Invalid owner key format") true)
     :daemon (do (print "Daemon mode not yet implemented...") false)
-    :db-root (try (.accessSync fs value) true (catch js/Error _ (print "Invalid db root path")))))
+    :db-root (try (.accessSync fs value) true (catch js/Error _ (print "Invalid db root path")))
+    :storage (try (.accessSync fs value) true (catch js/Error _ (print "Invalid storage root path")))))
 
 (defn- validate-args [args]
-  (let [required #{:owner :db-root :key-file}
+  (let [required #{:owner :db-root :key-file :storage}
         have (set (keys args))]
     (when-not (cset/subset? required have)
       (print "Missing mandatory arguments:" (s/join ", " (map #(str "--" (name %)) (cset/difference required have))))
@@ -101,6 +102,7 @@
         "--owner" (recur (assoc args :owner (second current)) (nnext current))
         "--daemon" (recur (assoc args :daemon true) (next current))
         "--db-root" (recur (assoc args :db-root (second current)) (nnext current))
+        "--storage" (recur (assoc args :storage (second current)) (nnext current))
         (do (print "Invalid argument" (first current)) (.exit process 1))))))
 
 (defn- generate-keys [key-file]
@@ -134,7 +136,7 @@
         (.get app "/" (fn [req res] (.send res "Hello C3RES!")))
 
         (.get app "/shard/:id" (fn [req res] (go
-                                               (let [result (<! (get-shard (.-id (.-params req))))]
+                                               (let [result (<! (get-shard args (.-id (.-params req))))]
                                                  (if (:error result)
                                                    (ret-error res result)
                                                    (do
@@ -143,13 +145,13 @@
                                                      (.write res (:shard result))))
                                                  (.end res)))))
         (.post app "/shard" (.raw body-parser) (fn [req res] (go
-                                                               (let [error-map (<! (parse-payload (.-body req) allowed_authors server-keypair database))]
+                                                               (let [error-map (<! (parse-payload args (.-body req) allowed_authors server-keypair database))]
                                                                  (if (:error error-map)
                                                                    (ret-error res error-map)
                                                                    (.writeHead res 200))
                                                                  (.end res)))))
         (.put app "/shard/:id" (.raw body-parser) (fn [req res] (go
-                                                                  (let [error-map (<! (store-shard (.-id (.-params req)) (.-body req) allowed_authors))]
+                                                                  (let [error-map (<! (store-shard args (.-id (.-params req)) (.-body req) allowed_authors))]
                                                                     (if (:error error-map)
                                                                       (ret-error res error-map)
                                                                       (.writeHead res 200))
