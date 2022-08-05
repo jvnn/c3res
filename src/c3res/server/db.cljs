@@ -36,7 +36,7 @@
       (.run labels-stmt label-key (labels label-key) shard-id (fn [error] (when error (print "Error when storing labels:" error)))))))
 
 (defn- prepare-dynamic-query [prefix amount-queries]
-  (let [query-str (reduce #(str %1 (if (s/blank? %1) "" " AND " ) "\"label_key\" = ? AND \"label_value\" = ?") "" (range amount-queries))]
+  (let [query-str (reduce #(str %1 (if (s/blank? %1) "" " OR " ) "\"label_key\" = ? AND \"label_value\" = ?") "" (range amount-queries))]
     (str prefix " " query-str)))
 
 (defn query-labels [db labels]
