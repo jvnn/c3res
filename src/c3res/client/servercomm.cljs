@@ -1,6 +1,7 @@
 (ns c3res.client.servercomm
   (:require [c3res.client.http :as http]
             [c3res.shared.csexp :as csexp]
+            [clojure.string :as s]
             [cljs.core.async :as async :refer [<! >! put! chan close!]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -22,4 +23,14 @@
     (let [resp (<! (http/do-get (:server server-config) (:port server-config) (str "/shard/" id)))]
       (if (not= (:status resp) 200)
         (print "Failed to fetch shard " id "- status:" (:status resp) "error:" (:data resp))
+        (:data resp)))))
+
+(defn- create-query [labels]
+  (reduce #(str %1 (if (s/blank? %1) "" "&") (js/encodeURIComponent (first %2)) "=" (js/encodeURIComponent (second %2))) "" labels))
+
+(defn query [server-config labels]
+  (go
+    (let [resp (<! (http/do-get (:server server-config) (:port server-config) (str "/metadata?" (create-query labels))))]
+      (if (not= (:status resp) 200)
+        (print "Failed to query metadata; status:" (:status resp) "error:" (:data resp))
         (:data resp)))))

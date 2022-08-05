@@ -22,6 +22,53 @@
 
 ; XXX The server crashes when you send multipart data to it...
 
+(defn- validate-arg [key value args]
+  (case key
+    :key-file (if (s/blank? value) (print "Empty key file path") true)
+    :owner (if-not (and (string? value) (re-matches #"^[0-9a-z]{64}$" value)) (print "Invalid owner key format") true)
+    :daemon (do (print "Daemon mode not yet implemented...") false)
+    :db-root (try (.accessSync fs value) true (catch js/Error _ (print "Invalid db root path")))
+    :storage (try (.accessSync fs value) true (catch js/Error _ (print "Invalid storage root path")))))
+
+(defn- validate-args [args]
+  (let [required #{:owner :db-root :key-file :storage}
+        have (set (keys args))]
+    (when-not (cset/subset? required have)
+      (print "Missing mandatory arguments:" (s/join ", " (map #(str "--" (name %)) (cset/difference required have))))
+      (.exit process 1)))
+  (loop [option-keys (keys args)]
+    (if-let [key (first option-keys)]
+      (if (validate-arg key (args key) args)
+        (recur (rest option-keys))
+        (.exit process 1))
+      args)))
+
+(defn- parse-args [argv]
+  (loop [args {} current argv]
+    (if (not current)
+      (validate-args args)
+      (case (first current)
+        "--key-file" (recur (assoc args :key-file (second current)) (nnext current))
+        "--owner" (recur (assoc args :owner (second current)) (nnext current))
+        "--daemon" (recur (assoc args :daemon true) (next current))
+        "--db-root" (recur (assoc args :db-root (second current)) (nnext current))
+        "--storage" (recur (assoc args :storage (second current)) (nnext current))
+        (do (print "Invalid argument" (first current)) (.exit process 1))))))
+
+(defn- generate-keys [key-file]
+  (let [newkeys (shards/generate-keys)
+        keys-csexp (csexp/encode (conj (map #(seq [(name (first %)) (second %)]) newkeys) "serverkeys"))]
+    (.writeFileSync fs key-file keys-csexp)
+    newkeys))
+
+(defn- read-keys [key-file]
+  (let [keys-csexp (csexp/decode (.readFileSync fs key-file))]
+    (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} (rest keys-csexp))))
+
+
+; --------- ^^^^ helpers ---------- vvvv request handling ----------
+
+
 (defn- store-shard [args expected-id data allowed_authors]
   (go
     (let [id-and-author (shards/validate-shard data)]
@@ -72,56 +119,25 @@
         {:status 400 :error (str "Unknown payload type: " (first parts))})
       {:status 400 :error "Invalid payload structure"})))
 
-(defn- validate-arg [key value args]
-  (case key
-    :key-file (if (s/blank? value) (print "Empty key file path") true)
-    :owner (if-not (and (string? value) (re-matches #"^[0-9a-z]{64}$" value)) (print "Invalid owner key format") true)
-    :daemon (do (print "Daemon mode not yet implemented...") false)
-    :db-root (try (.accessSync fs value) true (catch js/Error _ (print "Invalid db root path")))
-    :storage (try (.accessSync fs value) true (catch js/Error _ (print "Invalid storage root path")))))
-
-(defn- validate-args [args]
-  (let [required #{:owner :db-root :key-file :storage}
-        have (set (keys args))]
-    (when-not (cset/subset? required have)
-      (print "Missing mandatory arguments:" (s/join ", " (map #(str "--" (name %)) (cset/difference required have))))
-      (.exit process 1)))
-  (loop [option-keys (keys args)]
-    (if-let [key (first option-keys)]
-      (if (validate-arg key (args key) args)
-        (recur (rest option-keys))
-        (.exit process 1))
-      args)))
-
-(defn- parse-args [argv]
-  (loop [args {} current argv]
-    (if (not current)
-      (validate-args args)
-      (case (first current)
-        "--key-file" (recur (assoc args :key-file (second current)) (nnext current))
-        "--owner" (recur (assoc args :owner (second current)) (nnext current))
-        "--daemon" (recur (assoc args :daemon true) (next current))
-        "--db-root" (recur (assoc args :db-root (second current)) (nnext current))
-        "--storage" (recur (assoc args :storage (second current)) (nnext current))
-        (do (print "Invalid argument" (first current)) (.exit process 1))))))
-
-(defn- generate-keys [key-file]
-  (let [newkeys (shards/generate-keys)
-        keys-csexp (csexp/encode (conj (map #(seq [(name (first %)) (second %)]) newkeys) "serverkeys"))]
-    (.writeFileSync fs key-file keys-csexp)
-    newkeys))
-
-(defn- read-keys [key-file]
-  (let [keys-csexp (csexp/decode (.readFileSync fs key-file))]
-    (reduce #(assoc %1 (keyword (first %2)) (second %2)) {} (rest keys-csexp))))
+(defn- query-metadata [args server-keypair query database]
+  (go
+    (let [data (csexp/encode (concat '("query") (map #(list (first %) (second %)) (js->clj query))))]
+      {:result (.from js/Buffer (:data (shards/create-shard data "c3res/csexp" server-keypair server-keypair [(:owner-enc-pubkey args)])))})))
 
 (defn- ret-error [res error-map]
   (.writeHead res (:status error-map) (:error error-map)))
 
+(defn- ret-csexp [res csexp]
+  (.writeHead res 200 (clj->js {"Content-Type" "application/octet-stream"
+                                "Content-Length" (str (.-length csexp))}))
+  (.write res csexp))
+
 (defn -main [& argv]
   (go
     (<! (sod/init))
-    (let [args (parse-args argv)
+    (let [sodium (sod/get-sodium)
+          args0 (parse-args argv)
+          args (assoc args0 :owner-enc-pubkey (.crypto_sign_ed25519_pk_to_curve25519 sodium (.from_hex sodium (:owner args0))))
           database (<! (db/open-db (.join path (:db-root args) (str (:owner args) ".db"))))
           server-keypair (if (not (<! (storage/file-accessible (:key-file args))))
                            (do
@@ -130,7 +146,7 @@
                            (do
                              (print "Using existing key file")
                              (read-keys (:key-file args))))]
-      (print "Starting server with public key " (.to_hex (sod/get-sodium) (:enc-public server-keypair)))
+      (print "Starting server with public key " (.to_hex sodium (:enc-public server-keypair)))
       (let [app (express)
             allowed_authors #{(:owner args)}]
         (.get app "/" (fn [req res] (.send res "Hello C3RES!")))
@@ -139,10 +155,7 @@
                                                (let [result (<! (get-shard args (.-id (.-params req))))]
                                                  (if (:error result)
                                                    (ret-error res result)
-                                                   (do
-                                                     (.writeHead res 200 (clj->js {"Content-Type" "application/octet-stream"
-                                                                                   "Content-Length" (str (.-length (:shard result)))}))
-                                                     (.write res (:shard result))))
+                                                   (ret-csexp res (:shard result)))
                                                  (.end res)))))
         (.post app "/shard" (.raw body-parser) (fn [req res] (go
                                                                (let [error-map (<! (parse-payload args (.-body req) allowed_authors server-keypair database))]
@@ -156,6 +169,14 @@
                                                                       (ret-error res error-map)
                                                                       (.writeHead res 200))
                                                                     (.end res)))))
+
+        ; metadata query interface
+        ; TODO: THIS BELONGS BEHIND AUTHENTICATION
+        (.get app "/metadata" (fn [req res] (go
+                                              (let [result (<! (query-metadata args server-keypair (.-query req) database))]
+                                                (if (:error result)
+                                                  (ret-error res result)
+                                                  (ret-csexp res (:result result)))))))
 
         (.listen app 3001 #(print "Listening on port 3001"))))))
 

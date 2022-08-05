@@ -114,11 +114,15 @@
 
 (defn pretty-print [shard]
   (print "-----")
-  (if (= (:type shard) "c3res/metadata")
+  (cond
+    (= (:type shard) "c3res/metadata")
     (do
       (print "type:\t\tc3res/metadata")
       (doseq [part [[:timestamp "\t"] [:labels "\t\t"]]]
         (print (str (name (first part)) ":" (second part) ((:metadata shard) (first part))))))
+    (= (:type shard) "c3res/csexp")
+    (print (csexp/decode (:raw shard)))
+    :else
     (doseq [part [[:type "\t"] [:raw "\n"]]]
       (print (str (name (first part)) ":" (second part) (shard (first part)))))
     )

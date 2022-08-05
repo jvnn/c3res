@@ -90,10 +90,11 @@
       :config-dir (if-not (<! (storage/ensure-dir value 0750)) (print (str "Invalid config directory '" value "' given")) true)
       :password (if (s/blank? value) (print "Invalid or missing password") true)
       :store (if-not (<! (storage/file-accessible value)) (print (str "Cannot find or access file '" value "' to store")) true)
-      :labels (if (or (nil? (:store args)) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
-                (print "Invalid label(s) or labels provided without --store") true)
+      :labels (if (or (not-any? #(contains? args %) [:store :query]) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
+                (print "Invalid label(s) or labels provided without --store or --query") true)
       :fetch (if-not (is-hash-64 value) (print "Invalid id hash") true)
-      :server (if (some #(contains? args %) [:store :fetch]) (print "Cannot use --server together with --store / --fetch") true)
+      :query (if (or (some #(contains? args %) [:store :fetch]) (nil? (:labels args))) (print "Cannot use --query together with --store / --fetch or without labels") true)
+      :server (if (some #(contains? args %) [:store :fetch :query]) (print "Cannot use --server together with --store / --fetch / --query") true)
       :daemon (if (or (nil? (:server args)) (some #(contains? args %) [:store :fetch]))
                 (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false))
       :print-master-key (if-not (reduce #(and %1 (contains? #{:password :print-master-key :config-dir} %2)) true (keys args))
@@ -119,6 +120,7 @@
         "--store" (recur (assoc args :store (second current)) (nnext current))
         "--label" (recur (assoc args :labels (conj (or (:labels args) []) (second current))) (nnext current))
         "--fetch" (recur (assoc args :fetch (second current)) (nnext current))
+        "--query" (recur (assoc args :query (second current)) (next current))
         "--server" (recur (assoc args :server true) (next current))
         "--daemon" (recur (assoc args :daemon true) (next current))
         "--print-master-key" (recur (assoc args :print-master-key true) (next current))
@@ -151,12 +153,13 @@
       (mapv convert-server-config raw-server-configs))))
 
 (defn- get-labels [args]
-  (let [filename (.basename path (:store args))
-        label-vec (map #(vec [(second (re-find #"^([^=]+)=" %)) (second (re-find #"=(.+)" %))]) (or (:labels args) []))
-        labels (reduce #(assoc %1 (first %2) (second %2)) {} label-vec)]
-    (-> labels
-        (assoc "origin" "c3res-cli")
-        (assoc "filename" filename))))
+  (let [label-vec (map #(vec [(second (re-find #"^([^=]+)=" %)) (second (re-find #"=(.+)" %))]) (or (:labels args) []))]
+    (reduce #(assoc %1 (first %2) (second %2)) {} label-vec)))
+
+(defn- get-extended-labels [args]
+  (-> (get-labels args)
+      (assoc "origin" "c3res-cli")
+      (assoc "filename" (.basename path (:store args)))))
 
 (defn main [& argv]
   (go
@@ -171,10 +174,13 @@
           ; CONTINUE HERE:
           ;    - implement mime type support (check npm mime package)
           (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-labels args) master-key server-config []))))))
+                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-extended-labels args) master-key server-config []))))))
           (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key server-config))]
                           (shards/pretty-print contents)
                           (print "Could not find shard with id" (:fetch args)))
+          (:query args) (if-let [data (<! (servercomm/query server-config (get-labels args)))]
+                          (shards/pretty-print (shards/read-shard-caps data master-key))
+                          (print "Could not perform query"))
           (:server args) (.listen (.createServer http) 3000))))))
 
 (set! *main-cli-fn* main)
