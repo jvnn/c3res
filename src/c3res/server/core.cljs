@@ -172,7 +172,11 @@
                                                                     (.end res)))))
 
         ; metadata query interface
-        ; TODO: THIS BELONGS BEHIND AUTHENTICATION
+        ; TODO: this should probably be authenticated somehow to prevent information
+        ; exposure via inspecting the size of server responses and DoS attacks by making
+        ; the server do a lot of unneccessary work. But as the responses are encrypted
+        ; shards with caps only for the owner, there is no direct information leakage
+        ; and we can live without auth for now.
         (.get app "/metadata" (fn [req res] (go
                                               (let [result (<! (query-metadata args server-keypair (.-query req) database))]
                                                 (if (:error result)
