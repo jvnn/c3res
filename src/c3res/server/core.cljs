@@ -121,7 +121,8 @@
 
 (defn- query-metadata [args server-keypair query database]
   (go
-    (let [data (csexp/encode (concat '("query") (map #(list (first %) (second %)) (js->clj query))))]
+    (let [ids (<! (db/query-labels database (js->clj query)))
+          data (csexp/encode (cons "query-results" (seq ids)))]
       {:result (.from js/Buffer (:data (shards/create-shard data "c3res/csexp" server-keypair server-keypair [(:owner-enc-pubkey args)])))})))
 
 (defn- ret-error [res error-map]
