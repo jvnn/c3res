@@ -34,16 +34,17 @@
           {:error (str "Failed to cache following ids: " (s/join " " failed-ids))}
           {:shard-id (:id (:shard shard-and-metadata)) :metadata-id (:id (:metadata shard-and-metadata))})))))
 
-; TODO: cache the fetched shard
 (defn fetch [cache-path id my-keys server-config]
   (go
-    (when-let [shard (or (<! (storage/get-shard cache-path id)) (<! (servercomm/fetch server-config id)))]
+    (let [shard-from-cache (<! (storage/get-shard cache-path id))
+          shard (or shard-from-cache (<! (servercomm/fetch server-config id)))]
       (let [id-and-author (shards/validate-shard shard)]
         (cond
           (:error id-and-author) (print "Fetched shard did not pass validation:" (:error id-and-author))
           (not= id (:id id-and-author)) (print "ID mismatch in cache: file stored as" id " but validation returned " (:id id-and-author))
           :else
           (let [shard-map (shards/read-shard shard my-keys)]
+            (when (not shard-from-cache) (storage/store-shard cache-path {:id id :data shard}))
             (if (:error shard-map)
               (print "Failed to retrieve a shard: " (:error shard-map))
               shard-map)))))))
