@@ -1,13 +1,15 @@
 (ns c3res.client.core
   (:require [c3res.client.cache :as cache]
+            [c3res.client.httpserver :as httpserver]
             [c3res.client.servercomm :as servercomm]
+            [c3res.shared.csexp :as csexp]
             [c3res.shared.keystore :as keystore]
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.shards :as shards]
             [c3res.shared.storage :as storage]
             [clojure.string :as s]
             [cljs.nodejs :as node]
-            [cljs.core.async :as async :refer [<! >! put! chan close!]])
+            [cljs.core.async :as async :refer [<! >! put! chan close! pipe]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
 
 (node/enable-util-print!)
@@ -15,7 +17,6 @@
 (set! (.-message prompt) "")
 
 (def fs (node/require "fs"))
-(def http (node/require "http"))
 (def os (node/require "os"))
 (def path (node/require "path"))
 (def process (node/require "process"))
@@ -120,8 +121,8 @@
         "--store" (recur (assoc args :store (second current)) (nnext current))
         "--label" (recur (assoc args :labels (conj (or (:labels args) []) (second current))) (nnext current))
         "--fetch" (recur (assoc args :fetch (second current)) (nnext current))
-        "--query" (recur (assoc args :query (second current)) (next current))
-        "--server" (recur (assoc args :server true) (next current))
+        "--query" (recur (assoc args :query true) (next current))
+        "--server" (recur (assoc args :server (second current)) (nnext current))
         "--daemon" (recur (assoc args :daemon true) (next current))
         "--print-master-key" (recur (assoc args :print-master-key true) (next current))
         (do (print "Invalid argument" (first current)) (.exit process 1))))))
@@ -161,6 +162,28 @@
       (assoc "origin" "c3res-cli")
       (assoc "filename" (.basename path (:store args)))))
 
+(defn- store [cache-path data mime-type labels master-key server-config]
+  (cache/new-shard cache-path data mime-type labels master-key server-config []))
+
+(defn- store-file [cache-path filename labels master-key server-config]
+  ; TODO: implement mime type support (check npm mime package)
+  (let [c (chan)]
+    (.readFile fs filename (clj->js {:encoding "utf-8"})
+               #(if %1
+                  (put! c false)
+                  (pipe (store cache-path %2 "text/plain" labels master-key server-config) c)))
+    c))
+
+(defn- fetch [cache-path id master-key server-config]
+  (go
+    (when-let [contents (<! (cache/fetch cache-path id master-key server-config))]
+      (:raw contents))))
+
+(defn- query [labels master-key server-config]
+  (go
+    (when-let [data (<! (servercomm/query server-config labels))]
+      (vec (rest (csexp/decode (:raw (shards/read-shard-caps data master-key))))))))
+
 (defn main [& argv]
   (go
     (<! (sod/init))
@@ -171,17 +194,15 @@
             sodium (sod/get-sodium)]
         (cond
           (:print-master-key args) (print "public: " (.to_hex sodium (:sign-public master-key)) "\nprivate: " (.to_hex sodium (:sign-private master-key)))
-          ; CONTINUE HERE:
-          ;    - implement mime type support (check npm mime package)
-          (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
-                                   #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-extended-labels args) master-key server-config []))))))
-          (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key server-config))]
-                          (.write (.-stdout process) (.from js/Buffer (:raw contents)))
-                          (print "Could not find shard with id" (:fetch args)))
-          (:query args) (if-let [data (<! (servercomm/query server-config (get-labels args)))]
-                          (shards/pretty-print (shards/read-shard-caps data master-key))
-                          (print "Could not perform query"))
-          (:server args) (.listen (.createServer http) 3000))))))
+          (:store args) (<! (store-file cache-path (:store args) (get-extended-labels args) master-key server-config))
+          (:fetch args) (when-let [data (<! (fetch cache-path (:fetch args) master-key server-config))]
+                          (.write (.-stdout process) (.from js/Buffer data)))
+          (:query args) (when-let [results (<! (query (get-labels args) master-key server-config))] (print results))
+          (:server args) (httpserver/create
+                           (:server args)
+                           #(store cache-path %1 %2 %3 master-key server-config)
+                           #(fetch cache-path % master-key server-config)
+                           #(query %1 master-key server-config)))))))
 
 (set! *main-cli-fn* main)
 
