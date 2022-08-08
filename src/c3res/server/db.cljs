@@ -35,20 +35,13 @@
     (doseq [label-key (keys labels)]
       (.run labels-stmt label-key (labels label-key) shard-id (fn [error] (when error (print "Error when storing labels:" error)))))))
 
-(defn- prepare-dynamic-query [prefix amount-queries]
-  (let [query-str (reduce #(str %1 (if (s/blank? %1) "" " OR " ) "\"label_key\" = ? AND \"label_value\" = ?") "" (range amount-queries))]
-    (str prefix " " query-str)))
-
-(defn query-labels [db labels]
+(defn query-labels [db label value]
   (let [c (chan)
-        labels-stmt (.prepare db (prepare-dynamic-query "SELECT shard_id FROM labels WHERE" (count labels)))]
-    ; for some reason a plain clj "apply" does not work with a raw javascript function accessed via ".-"
-    ; -> need to use ".apply" from js directly the hard way
-    (.apply (.-all labels-stmt) labels-stmt
-            (into-array (conj (vec (reduce #(concat %1 (vec %2)) [] labels))
-                              (fn [error rows]
-                                (if error
-                                  (do (print error) (close! c))
-                                  (put! c (mapv #(% "shard_id") (js->clj rows))))))))
+        labels-stmt (.prepare db "SELECT shard_id FROM labels WHERE \"label_key\" = ? AND \"label_value\" = ?")]
+    (.all labels-stmt label value
+          (fn [error rows]
+            (if error
+              (do (print error) (close! c))
+              (put! c (mapv #(% "shard_id") (js->clj rows))))))
     c))
 

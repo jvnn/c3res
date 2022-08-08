@@ -119,9 +119,9 @@
         {:status 400 :error (str "Unknown payload type: " (first parts))})
       {:status 400 :error "Invalid payload structure"})))
 
-(defn- query-metadata [args server-keypair query database]
+(defn- query-labels [args server-keypair label value database]
   (go
-    (let [ids (<! (db/query-labels database (js->clj query)))
+    (let [ids (<! (db/query-labels database label value))
           data (csexp/encode (cons "query-results" (seq ids)))]
       {:result (.from js/Buffer (:data (shards/create-shard data "c3res/csexp" server-keypair server-keypair [(:owner-enc-pubkey args)])))})))
 
@@ -177,11 +177,14 @@
         ; the server do a lot of unneccessary work. But as the responses are encrypted
         ; shards with caps only for the owner, there is no direct information leakage
         ; and we can live without auth for now.
-        (.get app "/metadata" (fn [req res] (go
-                                              (let [result (<! (query-metadata args server-keypair (.-query req) database))]
-                                                (if (:error result)
-                                                  (ret-error res result)
-                                                  (ret-csexp res (:result result)))))))
+        (.get app "/labels/:label/:value" (fn [req res] (go
+                                                          (let [params (.-params req)
+                                                                label (js/decodeURIComponent (.-label params))
+                                                                value (js/decodeURIComponent (.-value params))
+                                                                result (<! (query-labels args server-keypair label value database))]
+                                                            (if (:error result)
+                                                              (ret-error res result)
+                                                              (ret-csexp res (:result result)))))))
 
         (.listen app 3001 #(print "Listening on port 3001"))))))
 

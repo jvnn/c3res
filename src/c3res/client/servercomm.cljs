@@ -25,12 +25,12 @@
         (print "Failed to fetch shard " id "- status:" (:status resp) "error:" (:data resp))
         (:data resp)))))
 
-(defn- create-query [labels]
-  (reduce #(str %1 (if (s/blank? %1) "" "&") (js/encodeURIComponent (first %2)) "=" (js/encodeURIComponent (second %2))) "" labels))
+(defn- create-labels-path [label value]
+  (str "/labels/" (js/encodeURIComponent label) "/" value))
 
-(defn query [server-config labels]
+(defn query [server-config label value]
   (go
-    (let [resp (<! (http/do-get (:server server-config) (:port server-config) (str "/metadata?" (create-query labels))))]
+    (let [resp (<! (http/do-get (:server server-config) (:port server-config) (create-labels-path label value)))]
       (if (not= (:status resp) 200)
         (print "Failed to query metadata; status:" (:status resp) "error:" (:data resp))
         (:data resp)))))

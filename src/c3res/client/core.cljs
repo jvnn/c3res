@@ -94,7 +94,8 @@
       :labels (if (or (not-any? #(contains? args %) [:store :query]) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
                 (print "Invalid label(s) or labels provided without --store or --query") true)
       :fetch (if-not (is-hash-64 value) (print "Invalid id hash") true)
-      :query (if (or (some #(contains? args %) [:store :fetch]) (nil? (:labels args))) (print "Cannot use --query together with --store / --fetch or without labels") true)
+      :query (if (or (some #(contains? args %) [:store :fetch]) (not= (count (:labels args)) 1))
+               (print "Cannot use --query together with --store / --fetch or without exactly one label=value pair") true)
       :server (if (some #(contains? args %) [:store :fetch :query]) (print "Cannot use --server together with --store / --fetch / --query") true)
       :daemon (if (or (nil? (:server args)) (some #(contains? args %) [:store :fetch]))
                 (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false))
@@ -179,9 +180,9 @@
     (when-let [contents (<! (cache/fetch cache-path id master-key server-config))]
       (:raw contents))))
 
-(defn- query [labels master-key server-config]
+(defn- query [label value master-key server-config]
   (go
-    (when-let [data (<! (servercomm/query server-config labels))]
+    (when-let [data (<! (servercomm/query server-config label value))]
       (vec (rest (csexp/decode (:raw (shards/read-shard-caps data master-key))))))))
 
 (defn main [& argv]
@@ -197,12 +198,15 @@
           (:store args) (<! (store-file cache-path (:store args) (get-extended-labels args) master-key server-config))
           (:fetch args) (when-let [data (<! (fetch cache-path (:fetch args) master-key server-config))]
                           (.write (.-stdout process) (.from js/Buffer data)))
-          (:query args) (when-let [results (<! (query (get-labels args) master-key server-config))] (print results))
+          (:query args) (let [keyval (first (get-labels args))
+                              label (first keyval)
+                              value (second keyval)]
+                            (when-let [results (<! (query label value master-key server-config))] (print results)))
           (:server args) (httpserver/create
                            (:server args)
                            #(store cache-path %1 %2 %3 master-key server-config)
                            #(fetch cache-path % master-key server-config)
-                           #(query %1 master-key server-config)))))))
+                           #(query %1 %2 master-key server-config)))))))
 
 (set! *main-cli-fn* main)
 
