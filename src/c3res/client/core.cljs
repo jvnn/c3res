@@ -176,7 +176,7 @@
           (:store args) (.readFile fs (:store args) (clj->js {:encoding "utf-8"})
                                    #(when-not %1 (go (print (<! (cache/new-shard cache-path %2 "text/plain" (get-extended-labels args) master-key server-config []))))))
           (:fetch args) (if-let [contents (<! (cache/fetch cache-path (:fetch args) master-key server-config))]
-                          (shards/pretty-print contents)
+                          (.write (.-stdout process) (.from js/Buffer (:raw contents)))
                           (print "Could not find shard with id" (:fetch args)))
           (:query args) (if-let [data (<! (servercomm/query server-config (get-labels args)))]
                           (shards/pretty-print (shards/read-shard-caps data master-key))
