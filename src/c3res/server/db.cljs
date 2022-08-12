@@ -35,7 +35,7 @@
     (doseq [label-key (keys labels)]
       (.run labels-stmt label-key (labels label-key) shard-id (fn [error] (when error (print "Error when storing labels:" error)))))))
 
-(defn query-labels [db label value]
+(defn query-label [db label value]
   (let [c (chan)
         labels-stmt (if (nil? value)
                       (.prepare db "SELECT shard_id FROM labels WHERE \"label_key\" = ?")
@@ -46,5 +46,17 @@
     (if (nil? value)
       (.all labels-stmt label callback)
       (.all labels-stmt label value callback))
+    c))
+
+(defn query-label-newest [db label value]
+  (let [c (chan)
+        stmt (.prepare db (str "SELECT labels.shard_id, shards.timestamp FROM labels, shards "
+                               "WHERE labels.label_key = ? AND labels.label_value = ? AND labels.shard_id = shards.shard_id "
+                               "ORDER BY shards.timestamp DESC LIMIT 1"))]
+    (.get stmt label value (fn [error row]
+                             (when error (print error))
+                             (if (nil? row)
+                               (close! c)
+                               (put! c ((js->clj row) "shard_id")))))
     c))
 

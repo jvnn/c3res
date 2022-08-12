@@ -119,19 +119,31 @@
         {:status 400 :error (str "Unknown payload type: " (first parts))})
       {:status 400 :error "Invalid payload structure"})))
 
-(defn- query-labels [args server-keypair label value database]
+(defn- query-label [args server-keypair label value database]
   (go
-    (let [ids (<! (db/query-labels database label value))
+    (let [ids (<! (db/query-label database label value))
           data (csexp/encode (cons "query-results" (seq ids)))]
       {:result (.from js/Buffer (:data (shards/create-shard data "c3res/csexp" server-keypair server-keypair [(:owner-enc-pubkey args)])))})))
 
+(defn- query-and-fetch [args server-keypair label value database]
+  (go
+    (if-let [id (<! (db/query-label-newest database label value))]
+      (<! (get-shard args id))
+      {:error "Could not find any shards matching the label" :status 404})))
+
 (defn- ret-error [res error-map]
-  (.writeHead res (:status error-map) (:error error-map)))
+  (.writeHead res (:status error-map) (:error error-map))
+  (.end res))
+
+(defn- ret-success [res]
+  (.writeHead res 200)
+  (.end res))
 
 (defn- ret-csexp [res csexp]
   (.writeHead res 200 (clj->js {"Content-Type" "application/octet-stream"
                                 "Content-Length" (str (.-length csexp))}))
-  (.write res csexp))
+  (.write res csexp)
+  (.end res))
 
 (defn -main [& argv]
   (go
@@ -156,20 +168,17 @@
                                                (let [result (<! (get-shard args (.-id (.-params req))))]
                                                  (if (:error result)
                                                    (ret-error res result)
-                                                   (ret-csexp res (:shard result)))
-                                                 (.end res)))))
+                                                   (ret-csexp res (:shard result)))))))
         (.post app "/shard" (.raw body-parser) (fn [req res] (go
                                                                (let [error-map (<! (parse-payload args (.-body req) allowed_authors server-keypair database))]
                                                                  (if (:error error-map)
                                                                    (ret-error res error-map)
-                                                                   (.writeHead res 200))
-                                                                 (.end res)))))
+                                                                   (ret-success res))))))
         (.put app "/shard/:id" (.raw body-parser) (fn [req res] (go
                                                                   (let [error-map (<! (store-shard args (.-id (.-params req)) (.-body req) allowed_authors))]
                                                                     (if (:error error-map)
                                                                       (ret-error res error-map)
-                                                                      (.writeHead res 200))
-                                                                    (.end res)))))
+                                                                      (ret-success res))))))
 
         ; metadata query interface
         ; TODO: this should probably be authenticated somehow to prevent information
@@ -177,20 +186,31 @@
         ; the server do a lot of unneccessary work. But as the responses are encrypted
         ; shards with caps only for the owner, there is no direct information leakage
         ; and we can live without auth for now.
-        (.get app "/labels/:label" (fn [req res] (go
-                                                   (let [result (<! (query-labels args server-keypair (js/decodeURIComponent (.-label (.-params req))) nil database))]
+        (.get app "/label/:label" (fn [req res] (go
+                                                   (let [result (<! (query-label args server-keypair (js/decodeURIComponent (.-label (.-params req))) nil database))]
                                                      (if (:error result)
                                                        (ret-error res result)
                                                        (ret-csexp res (:result result)))))))
 
-        (.get app "/labels/:label/:value" (fn [req res] (go
+        (.get app "/label/:label/:value" (fn [req res] (go
                                                           (let [params (.-params req)
                                                                 label (js/decodeURIComponent (.-label params))
                                                                 value (js/decodeURIComponent (.-value params))
-                                                                result (<! (query-labels args server-keypair label value database))]
+                                                                result (<! (query-label args server-keypair label value database))]
                                                             (if (:error result)
                                                               (ret-error res result)
                                                               (ret-csexp res (:result result)))))))
+
+        ; TODO: current implementation leaks a lot of information about the labels as we return
+        ; an HTTP error when the label doesn't match -> no good, change to always returning a shard
+        (.get app "/shard/label/:label/:value" (fn [req res] (go
+                                                               (let [params (.-params req)
+                                                                     label (js/decodeURIComponent (.-label params))
+                                                                     value (js/decodeURIComponent (.-value params))
+                                                                     result (<! (query-and-fetch args server-keypair label value database))]
+                                                                 (if (:error result)
+                                                                   (ret-error res result)
+                                                                   (ret-csexp res (:shard result)))))))
 
         (.listen app 3001 #(print "Listening on port 3001"))))))
 

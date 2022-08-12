@@ -7,6 +7,7 @@
             [c3res.shared.sodiumhelper :as sod]
             [c3res.shared.shards :as shards]
             [c3res.shared.storage :as storage]
+            [clojure.set :as cset]
             [clojure.string :as s]
             [cljs.nodejs :as node]
             [cljs.core.async :as async :refer [<! >! put! chan close! pipe]])
@@ -91,23 +92,27 @@
       :config-dir (if-not (<! (storage/ensure-dir value 0750)) (print (str "Invalid config directory '" value "' given")) true)
       :password (if (s/blank? value) (print "Invalid or missing password") true)
       :store (if-not (<! (storage/file-accessible value)) (print (str "Cannot find or access file '" value "' to store")) true)
-      :labels (if (or (not-any? #(contains? args %) [:store :query]) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
-                (print "Invalid label(s) or labels provided without --store or --query") true)
+      :labels (if (or (not-any? #(contains? args %) [:store :query :queryfetch]) (not (every? #(re-matches #"^[^=]+=.*$" %) (:labels args))))
+                (print "Invalid label(s) or labels provided without --store, --query, or --queryfetch") true)
       :fetch (if-not (is-hash-64 value) (print "Invalid id hash") true)
-      :query (if (or (some #(contains? args %) [:store :fetch]) (not= (count (:labels args)) 1))
-               (print "Cannot use --query together with --store / --fetch or without exactly one label=value pair") true)
-      :server (if (some #(contains? args %) [:store :fetch :query]) (print "Cannot use --server together with --store / --fetch / --query") true)
+      :query (if (not= (count (:labels args)) 1) (print "Exactly one label=value pair required with --query") true)
+      :queryfetch (if (not= (count (:labels args)) 1) (print "Exactly one label=value pair required with --queryfetch") true)
+      :server true
       :daemon (if (or (nil? (:server args)) (some #(contains? args %) [:store :fetch]))
                 (print "Cannot use --daemon without --server or with --store / --fetch") (do (print "Daemon mode not yet implemented...") false))
       :print-master-key (if-not (reduce #(and %1 (contains? #{:password :print-master-key :config-dir} %2)) true (keys args))
                           (print "Only --password is allowed together with --print-master-key") true))))
 
 (defn- validate-args [args]
-  (go-loop [option-keys (keys args)]
-    (if-let [key (first option-keys)]
-      (when (<! (validate-arg key (args key) args))
-        (recur (rest option-keys)))
-      args)))
+  (go
+    (let [only-one-allowed #{:store :query :fetch :queryfetch :server}]
+      (if (> (count (cset/intersection (set (keys args)) only-one-allowed)) 1)
+        (print "Cannot use more than one of these at a time:" (map #(str "--" (name %)) only-one-allowed))
+        (loop [option-keys (keys args)]
+          (if-let [key (first option-keys)]
+            (when (<! (validate-arg key (args key) args))
+              (recur (rest option-keys)))
+            args))))))
 
 ; TODO: some possible future commands:
 ;   --restore-master-key: takes a key pair as a parameter to regenerate backed up key
@@ -123,6 +128,7 @@
         "--label" (recur (assoc args :labels (conj (or (:labels args) []) (second current))) (nnext current))
         "--fetch" (recur (assoc args :fetch (second current)) (nnext current))
         "--query" (recur (assoc args :query true) (next current))
+        "--queryfetch" (recur (assoc args :queryfetch true) (next current))
         "--server" (recur (assoc args :server (second current)) (nnext current))
         "--daemon" (recur (assoc args :daemon true) (next current))
         "--print-master-key" (recur (assoc args :print-master-key true) (next current))
@@ -185,6 +191,17 @@
     (when-let [data (<! (servercomm/query server-config label value))]
       (vec (rest (csexp/decode (:raw (shards/read-shard-caps data master-key))))))))
 
+(defn- queryfetch [cache-path label value master-key server-config]
+  (go
+    (when-let [contents (<! (servercomm/queryfetch server-config label value))]
+      (let [shard-map (shards/read-shard contents master-key)]
+        (if (:error shard-map)
+          (print "Malformed shard received: " (:error shard-map))
+          (:raw shard-map))))))
+
+; TODO: errors should be written to stderr, and 1 should be returned from the process
+; (stdout should be reserved for actual valid response data only)
+
 (defn main [& argv]
   (go
     (<! (sod/init))
@@ -202,6 +219,11 @@
                               label (first keyval)
                               value (second keyval)]
                             (when-let [results (<! (query label value master-key server-config))] (print results)))
+          (:queryfetch args) (let [keyval (first (get-labels args))
+                                   label (first keyval)
+                                   value (second keyval)]
+                               (when-let [data (<! (queryfetch cache-path label value master-key server-config))]
+                                 (.write (.-stdout process) (.from js/Buffer data))))
           (:server args) (httpserver/create
                            (:server args)
                            #(store cache-path %1 %2 %3 master-key server-config)

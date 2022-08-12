@@ -27,8 +27,8 @@
 
 (defn- create-labels-path [label value]
   (if (s/blank? value)
-    (str "/labels/" (js/encodeURIComponent label))
-    (str "/labels/" (js/encodeURIComponent label) "/" (js/encodeURIComponent value))))
+    (str "/label/" (js/encodeURIComponent label))
+    (str "/label/" (js/encodeURIComponent label) "/" (js/encodeURIComponent value))))
 
 (defn query [server-config label value]
   (go
@@ -36,3 +36,11 @@
       (if (not= (:status resp) 200)
         (print "Failed to query metadata; status:" (:status resp) "error:" (:data resp))
         (:data resp)))))
+
+(defn queryfetch [server-config label value]
+  (go
+    (let [resp (<! (http/do-get (:server server-config) (:port server-config) (str "/shard" (create-labels-path label value))))]
+      (if (not= (:status resp) 200)
+        (print "Failed to query and fetch a shard; status:" (:status resp) "error:" (:data resp))
+        (:data resp)))))
+
