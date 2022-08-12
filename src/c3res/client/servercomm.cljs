@@ -26,7 +26,9 @@
         (:data resp)))))
 
 (defn- create-labels-path [label value]
-  (str "/labels/" (js/encodeURIComponent label) "/" value))
+  (if (s/blank? value)
+    (str "/labels/" (js/encodeURIComponent label))
+    (str "/labels/" (js/encodeURIComponent label) "/" (js/encodeURIComponent value))))
 
 (defn query [server-config label value]
   (go

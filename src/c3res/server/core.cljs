@@ -177,6 +177,12 @@
         ; the server do a lot of unneccessary work. But as the responses are encrypted
         ; shards with caps only for the owner, there is no direct information leakage
         ; and we can live without auth for now.
+        (.get app "/labels/:label" (fn [req res] (go
+                                                   (let [result (<! (query-labels args server-keypair (js/decodeURIComponent (.-label (.-params req))) nil database))]
+                                                     (if (:error result)
+                                                       (ret-error res result)
+                                                       (ret-csexp res (:result result)))))))
+
         (.get app "/labels/:label/:value" (fn [req res] (go
                                                           (let [params (.-params req)
                                                                 label (js/decodeURIComponent (.-label params))

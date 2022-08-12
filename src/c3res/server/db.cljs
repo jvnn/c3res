@@ -37,11 +37,14 @@
 
 (defn query-labels [db label value]
   (let [c (chan)
-        labels-stmt (.prepare db "SELECT shard_id FROM labels WHERE \"label_key\" = ? AND \"label_value\" = ?")]
-    (.all labels-stmt label value
-          (fn [error rows]
-            (if error
-              (do (print error) (close! c))
-              (put! c (mapv #(% "shard_id") (js->clj rows))))))
+        labels-stmt (if (nil? value)
+                      (.prepare db "SELECT shard_id FROM labels WHERE \"label_key\" = ?")
+                      (.prepare db "SELECT shard_id FROM labels WHERE \"label_key\" = ? AND \"label_value\" = ?"))
+        callback (fn [error rows] (if error
+                                    (do (print error) (close! c))
+                                    (put! c (mapv #(% "shard_id") (js->clj rows)))))]
+    (if (nil? value)
+      (.all labels-stmt label callback)
+      (.all labels-stmt label value callback))
     c))
 
