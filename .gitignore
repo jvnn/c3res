@@ -1,5 +1,7 @@
-client_out
-server_out
+client_dev
+client_prod
+server_dev
+server_prod
 test_out
 node_modules
 target

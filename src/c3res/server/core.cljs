@@ -212,7 +212,7 @@
                                                                    (ret-error res result)
                                                                    (ret-csexp res (:shard result)))))))
 
-        (.listen app 3001 #(print "Listening on port 3001"))))))
+        (.listen app 3003 #(print "Listening on port 3003"))))))
 
 (set! *main-cli-fn* -main)
 
