@@ -139,7 +139,7 @@
     (not (vector? config)) (print "Invalid root config type: expecting a list")
     (not= (count config) 1) (print "Currently supporting only one server endpoint")
     (not= (map? (first config))) (print "Invalid item in config list: expecting an object")
-    (not= ((first config) "type") "http") (print "Currently supporting only HTTP endpoints")
+    (nil? (#{"http" "https"} ((first config) "type"))) (print "Currently supporting only HTTP endpoints")
     (not= (set (keys (first config))) #{"type", "server", "port", "pubkey"}) (print "Unexpected set of keys in an endpoint configuration")
     (not (is-hash-64 ((first config) "pubkey"))) (print "Invalid server pubkey format")
     :else true))

@@ -4,7 +4,8 @@
             [cljs.core.async :as async :refer [<! >! put! chan close!]])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
-(def http (node/require "http"))
+(def httpx {"http" (node/require "http")
+            "https" (node/require "https")})
 
 (defn- handle-response [res c-status c-data]
   (let [status (.-statusCode res)]
@@ -13,7 +14,8 @@
     (.on res "data" #(go (>! c-data (js/Uint8Array. %))))
     (.on res "end" #(go (>! c-data :end)))))
 
-(defn- handle-error [c-out]
+(defn- handle-error [msg c-out]
+  (print msg)
   (close! c-out))
 
 (defn- receive-full-data [c-status c-resp c-out]
@@ -42,7 +44,7 @@
          "Content-Type" "application/octet-stream"
          "Content-Length" (str (.-length data))))
 
-(defn- do-http-request [host port path data headers method]
+(defn- do-http-request [protocol host port path data headers method]
   (let [c-status (chan)
         c-resp (chan)
         c-out (chan)
@@ -52,23 +54,23 @@
                  "path" path
                  "method" method,
                  "headers" extended-headers}
-        req (.request http (clj->js options) #(handle-response % c-status c-resp))]
-    (.on req "error" #(handle-error c-out))
+        req (.request (httpx protocol) (clj->js options) #(handle-response % c-status c-resp))]
+    (.on req "error" #(handle-error % c-out))
     (when data (.write req data))
     (.end req)
     (receive-full-data c-status c-resp c-out)))
 
-(defn do-get [host port path]
-  (do-http-request host port path nil nil "GET"))
+(defn do-get [protocol host port path]
+  (do-http-request protocol host port path nil nil "GET"))
 
-(defn do-post [host port path body headers]
-  (do-http-request host port path body headers "POST"))
+(defn do-post [protocol host port path body headers]
+  (do-http-request protocol host port path body headers "POST"))
 
-(defn do-put [host port path body headers]
-  (do-http-request host port path body headers "PUT"))
+(defn do-put [protocol host port path body headers]
+  (do-http-request protocol host port path body headers "PUT"))
 
-(defn do-patch [host port path body headers]
-  (do-http-request host port path body headers "PATCH"))
+(defn do-patch [protocol host port path body headers]
+  (do-http-request protocol host port path body headers "PATCH"))
 
-(defn do-delete [host port path body headers]
-  (do-http-request host port path body headers "DELETE"))
+(defn do-delete [protocol host port path body headers]
+  (do-http-request protocol host port path body headers "DELETE"))

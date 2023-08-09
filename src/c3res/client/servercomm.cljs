@@ -12,7 +12,7 @@
           sharddata (csexp/append-raw (csexp/encode '("shard")) (:data shard))
           metadatadata (csexp/append-raw (csexp/encode '("metadata")) (:data metadata))
           envelope (-> (csexp/encode '("c3res-envelope")) (csexp/append-raw sharddata) (csexp/append-raw metadatadata))
-          resp (<! (http/do-post (:server server-config) (:port server-config) "/shard" (.from js/Buffer (.-buffer envelope)) {}))]
+          resp (<! (http/do-post (:type server-config) (:server server-config) (:port server-config) "/shard" (.from js/Buffer (.-buffer envelope)) {}))]
       ; TODO: Better error handling, retries, buffering, ...
       (if (not= (:status resp) 200)
         (print "Failed to upload shard " (:id shard) " with metadata " (:id metadata) ": status " (:status resp) ", error: " (:data resp))
@@ -20,7 +20,7 @@
 
 (defn fetch [server-config id]
   (go
-    (let [resp (<! (http/do-get (:server server-config) (:port server-config) (str "/shard/" id)))]
+    (let [resp (<! (http/do-get (:type server-config) (:server server-config) (:port server-config) (str "/shard/" id)))]
       (if (not= (:status resp) 200)
         (print "Failed to fetch shard " id "- status:" (:status resp) "error:" (:data resp))
         (:data resp)))))
@@ -32,14 +32,14 @@
 
 (defn query [server-config label value]
   (go
-    (let [resp (<! (http/do-get (:server server-config) (:port server-config) (create-labels-path label value)))]
+    (let [resp (<! (http/do-get (:type server-config) (:server server-config) (:port server-config) (create-labels-path label value)))]
       (if (not= (:status resp) 200)
         (print "Failed to query metadata; status:" (:status resp) "error:" (:data resp))
         (:data resp)))))
 
 (defn queryfetch [server-config label value]
   (go
-    (let [resp (<! (http/do-get (:server server-config) (:port server-config) (str "/shard" (create-labels-path label value))))]
+    (let [resp (<! (http/do-get (:type server-config) (:server server-config) (:port server-config) (str "/shard" (create-labels-path label value))))]
       (if (not= (:status resp) 200)
         (print "Failed to query and fetch a shard; status:" (:status resp) "error:" (:data resp))
         (:data resp)))))
